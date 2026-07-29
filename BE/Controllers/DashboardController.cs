@@ -61,6 +61,7 @@ namespace BuiHuiCamping.API.Controllers
             // 4. Các hóa đơn gần đây (Gom theo BookingId)
             var rawRecentOrders = await _context.Orders
                 .Include(o => o.Tent)
+                    .ThenInclude(t => t.Zone)
                 .Include(o => o.Booking)
                 .OrderByDescending(o => o.CreatedAt)
                 .Take(30)
@@ -68,13 +69,33 @@ namespace BuiHuiCamping.API.Controllers
 
             var recentOrders = rawRecentOrders
                 .GroupBy(o => o.BookingId)
-                .Select(g => new {
-                    id = g.Key,
-                    customerName = g.First().Booking?.CustomerName ?? "Khách",
-                    tentName = g.First().Tent?.Name ?? "N/A",
-                    totalAmount = g.Sum(o => o.TotalAmount),
-                    status = g.All(o => o.Status == "Paid") ? "Paid" : "Unpaid",
-                    createdAt = g.Max(o => o.CreatedAt)
+                .Select(g => {
+                    var first = g.First();
+                    var tent = first.Tent;
+                    var booking = first.Booking;
+
+                    string rawZone = tent?.Zone?.Name ?? "";
+                    string rawTentName = tent?.Name ?? "";
+                    string tentNameFormatted = rawTentName.StartsWith("Lều") ? rawTentName : `Lều ${rawTentName}`;
+                    string zoneFormatted = (!string.IsNullOrEmpty(rawZone) && !rawZone.StartsWith("Khu")) ? $"Khu {rawZone}" : rawZone;
+                    string locationName = !string.IsNullOrEmpty(zoneFormatted) ? $"{zoneFormatted} - {tentNameFormatted}" : tentNameFormatted;
+
+                    string customerName = booking?.CustomerName ?? "Khách hàng";
+                    if (customerName.StartsWith("Khách lều") || customerName.StartsWith("Khách Lều"))
+                    {
+                        customerName = "Khách hàng";
+                    }
+
+                    return new {
+                        id = g.Key ?? first.Id,
+                        customerName = customerName,
+                        tentName = rawTentName,
+                        zoneName = rawZone,
+                        locationName = locationName,
+                        totalAmount = g.Sum(o => o.TotalAmount),
+                        status = g.All(o => o.Status == "Paid") ? "Paid" : "Unpaid",
+                        createdAt = g.Max(o => o.CreatedAt)
+                    };
                 })
                 .OrderByDescending(g => g.createdAt)
                 .Take(5)

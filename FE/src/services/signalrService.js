@@ -85,6 +85,10 @@ class SignalRService {
       return await this.connection.invoke(methodName, ...args);
     }
   }
+
+  async invoke(methodName, ...args) {
+    return await this.send(methodName, ...args);
+  }
 }
 
 const signalRService = new SignalRService();

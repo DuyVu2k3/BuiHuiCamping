@@ -7,7 +7,7 @@ import { getApiUrl } from '../../apiConfig';
 import signalRService from '../../services/signalrService';
 
 export default function CustomerHistoryPage() {
-  const { tentName } = useOutletContext();
+  const { tentName, tentId } = useOutletContext();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -237,11 +237,18 @@ export default function CustomerHistoryPage() {
             <button 
               onClick={async () => {
                 try {
-                  await signalRService.invoke("RequestCheckout", tentName);
+                  const activeTentId = tentId || parseInt(sessionStorage.getItem('customerTentId'));
+                  await axios.post(getApiUrl('/api/Bookings/request-checkout'), {
+                    tentId: activeTentId ? activeTentId : undefined,
+                    tentName: tentName
+                  });
+                  try {
+                    await signalRService.send("RequestCheckout", tentName);
+                  } catch (sErr) {}
                   toast.success("Đã gửi yêu cầu thanh toán tới Lễ Tân!");
                 } catch (err) {
-                  console.error("SignalR checkout error:", err);
-                  toast.error("Đã gửi yêu cầu thanh toán thành công!");
+                  console.error("Checkout request error:", err);
+                  toast.error("Không thể gửi yêu cầu thanh toán. Vui lòng thử lại!");
                 }
               }}
               className="bg-[#1B4D3E] hover:bg-[#153d31] text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all"

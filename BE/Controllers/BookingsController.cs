@@ -24,6 +24,12 @@ namespace BuiHuiCamping.API.Controllers
         public decimal DepositAmount { get; set; }
     }
 
+    public class RequestCheckoutDto
+    {
+        public int? TentId { get; set; }
+        public string TentName { get; set; } = string.Empty;
+    }
+
     [Route("api/[controller]")]
     [ApiController]
     public class BookingsController : ControllerBase
@@ -328,6 +334,45 @@ namespace BuiHuiCamping.API.Controllers
             }
             await _context.SaveChangesAsync();
             return Ok(new { message = "Reset physical tent statuses to Available" });
+        }
+
+        [HttpPost("request-checkout")]
+        public async Task<IActionResult> RequestCheckout([FromBody] RequestCheckoutDto dto)
+        {
+            if (string.IsNullOrEmpty(dto.TentName) && (!dto.TentId.HasValue || dto.TentId <= 0))
+            {
+                return BadRequest("Thiếu thông tin lều.");
+            }
+
+            var allTents = await _context.Tents
+                .Include(t => t.Zone)
+                .Include(t => t.Bookings)
+                .ToListAsync();
+
+            Tent? tent = null;
+            if (dto.TentId.HasValue && dto.TentId.Value > 0)
+            {
+                tent = allTents.FirstOrDefault(t => t.Id == dto.TentId.Value);
+            }
+            if (tent == null)
+            {
+                tent = OrdersController.FindMatchingTent(allTents, dto.TentName);
+            }
+
+            if (tent == null) return NotFound("Không tìm thấy Lều.");
+
+            var activeBooking = tent.Bookings?.FirstOrDefault(b => b.Status == "Occupied" || b.Status == "Booked" || b.Status == "Pending");
+            
+            string rawZone = tent.Zone?.Name ?? "";
+            string rawTentName = tent.Name ?? "";
+            string tentNameFormatted = rawTentName.StartsWith("Lều") ? rawTentName : $"Lều {rawTentName}";
+            string zoneFormatted = (!string.IsNullOrEmpty(rawZone) && !rawZone.StartsWith("Khu")) ? $"Khu {rawZone}" : rawZone;
+            string locationName = !string.IsNullOrEmpty(zoneFormatted) ? $"{zoneFormatted} - {tentNameFormatted}" : tentNameFormatted;
+
+            await _hubContext.Clients.All.SendAsync("CheckoutRequested", locationName);
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+
+            return Ok(new { message = "Đã gửi yêu cầu thanh toán tới Lễ Tân thành công!" });
         }
 
         [HttpPost("clear-all-data")]

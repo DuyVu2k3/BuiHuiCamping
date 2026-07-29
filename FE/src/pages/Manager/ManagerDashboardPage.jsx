@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { TrendingUp, Users, Tent, DollarSign, Activity, Utensils, Coffee, Map } from 'lucide-react';
+import { getApiUrl } from '../../apiConfig';
 
 export default function ManagerDashboardPage() {
   const [stats, setStats] = useState(null);
@@ -9,7 +10,7 @@ export default function ManagerDashboardPage() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await axios.get('https://localhost:7248/api/Dashboard/stats');
+        const res = await axios.get(getApiUrl('/api/Dashboard/stats'));
         setStats(res.data);
       } catch (error) {
         console.error("Lỗi khi tải thống kê:", error);
@@ -159,7 +160,11 @@ export default function ManagerDashboardPage() {
               <div key={order.id} className="flex justify-between items-center p-4 rounded-2xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100 cursor-default">
                 <div>
                   <p className="font-bold text-slate-800 text-sm">Hóa đơn #{order.id}</p>
-                  <p className="text-xs text-slate-500 font-medium">{order.customerName} - Lều: {order.tentName}</p>
+                  <p className="text-xs text-slate-500 font-semibold flex items-center gap-1.5 mt-0.5">
+                    <span>Khách: {order.customerName}</span>
+                    <span className="text-slate-300">•</span>
+                    <span>📍 {order.locationName || (order.zoneName ? `Khu ${order.zoneName.replace("Khu", "").trim()} - Lều ${order.tentName}` : `Lều ${order.tentName}`)}</span>
+                  </p>
                 </div>
                 <div className="text-right">
                   <p className="font-extrabold text-emerald-600 text-sm">{order.totalAmount.toLocaleString()}đ</p>
