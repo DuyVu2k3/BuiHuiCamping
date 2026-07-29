@@ -263,6 +263,7 @@ export default function FacilityManagementPage() {
                               {`${window.location.origin}${tent.qrCodeData}`}
                             </a>
 
+                            {/* 
                             <button 
                               onClick={() => handleToggleStatus(tent)}
                               className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${
@@ -274,6 +275,7 @@ export default function FacilityManagementPage() {
                               <Power size={14} />
                               {tent.status === 'Occupied' ? 'Trả Lều (Khóa QR)' : 'Kích Hoạt QR (Check-in)'}
                             </button>
+                            */}
 
                             <button 
                               onClick={() => downloadQR(tent.name)}
@@ -335,6 +337,7 @@ export default function FacilityManagementPage() {
                             {`${window.location.origin}${tent.qrCodeData}`}
                           </a>
 
+                          {/* 
                           <button 
                             onClick={() => handleToggleStatus(tent)}
                             className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${
@@ -346,6 +349,7 @@ export default function FacilityManagementPage() {
                             <Power size={14} />
                             {tent.status === 'Occupied' ? 'Trả Lều (Khóa QR)' : 'Kích Hoạt QR (Check-in)'}
                           </button>
+                          */}
 
                           <button 
                             onClick={() => downloadQR(tent.name)}
