@@ -85,6 +85,16 @@ using (var scope = app.Services.CreateScope())
             BEGIN
                 ALTER TABLE [Tents] ADD [IsQrUnlocked] BIT NOT NULL DEFAULT 0;
             END
+
+            IF EXISTS (
+                SELECT * FROM sys.columns 
+                WHERE object_id = OBJECT_ID(N'[Orders]') 
+                AND name = 'BookingId'
+                AND is_nullable = 0
+            )
+            BEGIN
+                ALTER TABLE [Orders] ALTER COLUMN [BookingId] INT NULL;
+            END
         ");
     }
     catch (Exception ex)

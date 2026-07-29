@@ -108,17 +108,33 @@ namespace BuiHuiCamping.API.Controllers
             if (tent == null) return NotFound("Không tìm thấy Lều này trong hệ thống.");
 
             var activeBooking = tent.Bookings.FirstOrDefault(b => b.Status == "Booked" || b.Status == "Occupied" || b.Status == "Pending");
+            if (activeBooking == null)
+            {
+                activeBooking = new Booking
+                {
+                    CustomerName = !string.IsNullOrEmpty(dto.CustomerName) ? dto.CustomerName : $"Khách Lều {tent.Name}",
+                    PhoneNumber = !string.IsNullOrEmpty(dto.PhoneNumber) ? dto.PhoneNumber : "0000000000",
+                    Status = "Occupied",
+                    CheckInDate = DateTime.UtcNow,
+                    CheckOutDate = DateTime.UtcNow.AddDays(1),
+                    IsQrUnlocked = true
+                };
+                _context.Bookings.Add(activeBooking);
+                activeBooking.Tents.Add(tent);
+                tent.Status = "Occupied";
+                await _context.SaveChangesAsync();
+            }
 
             // Find or Create Master Order for this Booking & Tent
             var masterOrder = await _context.Orders
-                .FirstOrDefaultAsync(o => (activeBooking != null && o.BookingId == activeBooking.Id) || (o.TentId == tent.Id && o.Status == "Unpaid"));
+                .FirstOrDefaultAsync(o => o.BookingId == activeBooking.Id && o.TentId == tent.Id && o.Status == "Unpaid");
 
             if (masterOrder == null)
             {
                 masterOrder = new Order
                 {
                     TentId = tent.Id,
-                    BookingId = activeBooking?.Id,
+                    BookingId = activeBooking.Id,
                     CreatedAt = DateTime.UtcNow,
                     Status = "Unpaid",
                     TotalAmount = 0
