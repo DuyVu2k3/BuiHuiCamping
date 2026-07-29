@@ -84,31 +84,47 @@ namespace BuiHuiCamping.API.Controllers
         [HttpPost]
         public async Task<IActionResult> PlaceOrder([FromBody] PlaceOrderDto dto)
         {
+            if (string.IsNullOrEmpty(dto.TentName))
+            {
+                return BadRequest("Thiếu thông tin lều.");
+            }
+
             var tentNameParts = dto.TentName.Split('.');
             var actualTentName = tentNameParts.Length > 1 ? tentNameParts[1] : dto.TentName;
 
-            var tent = await _context.Tents
+            var allTents = await _context.Tents
+                .Include(t => t.Zone)
                 .Include(t => t.Bookings)
-                .FirstOrDefaultAsync(t => t.Name == actualTentName);
+                .ToListAsync();
+
+            var tent = allTents.FirstOrDefault(t => 
+                (!string.IsNullOrEmpty(t.QRCodeData) && t.QRCodeData.EndsWith($"?tent={dto.TentName}", StringComparison.OrdinalIgnoreCase)) ||
+                t.Name.Equals(dto.TentName, StringComparison.OrdinalIgnoreCase) ||
+                (t.Zone != null && $"{t.Zone.Name}.{t.Name}".Equals(dto.TentName, StringComparison.OrdinalIgnoreCase)) ||
+                (t.Zone != null && $"{t.Zone.Name.Replace("Khu ", "")}.{t.Name}".Equals(dto.TentName, StringComparison.OrdinalIgnoreCase)) ||
+                t.Name.Equals(actualTentName, StringComparison.OrdinalIgnoreCase)
+            );
 
             if (tent == null) return NotFound("Không tìm thấy Lều này trong hệ thống.");
 
-            var activeBooking = tent.Bookings.FirstOrDefault(b => b.Status != "CheckedOut");
-            if (activeBooking == null) 
+            var activeBooking = tent.Bookings.FirstOrDefault(b => b.Status == "Booked" || b.Status == "Occupied" || b.Status == "Pending");
+            bool canOrder = tent.IsQrUnlocked || tent.Status == "Occupied" || (activeBooking != null && (activeBooking.IsQrUnlocked || activeBooking.Status == "Occupied" || activeBooking.Status == "Booked"));
+
+            if (!canOrder) 
             {
-                return BadRequest("Lều này chưa được Lễ Tân check-in. Vui lòng liên hệ Lễ Tân.");
+                return BadRequest("Mã QR của lều chưa được Lễ Tân mở khóa. Vui lòng liên hệ Lễ Tân.");
             }
 
             // Find or Create Master Order for this Booking & Tent
             var masterOrder = await _context.Orders
-                .FirstOrDefaultAsync(o => o.BookingId == activeBooking.Id && o.TentId == tent.Id && o.Status == "Unpaid");
+                .FirstOrDefaultAsync(o => (activeBooking != null && o.BookingId == activeBooking.Id) || (o.TentId == tent.Id && o.Status == "Unpaid"));
 
             if (masterOrder == null)
             {
                 masterOrder = new Order
                 {
                     TentId = tent.Id,
-                    BookingId = activeBooking.Id,
+                    BookingId = activeBooking?.Id,
                     CreatedAt = DateTime.UtcNow,
                     Status = "Unpaid",
                     TotalAmount = 0

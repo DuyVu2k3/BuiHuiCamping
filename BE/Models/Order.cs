@@ -10,7 +10,7 @@ namespace BuiHuiCamping.API.Models
         public int TentId { get; set; }
         public Tent? Tent { get; set; }
         
-        public int BookingId { get; set; }
+        public int? BookingId { get; set; }
         [JsonIgnore]
         public Booking? Booking { get; set; }
         public string Status { get; set; } = "Unpaid"; // Unpaid, Paid
