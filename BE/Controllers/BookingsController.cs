@@ -359,10 +359,13 @@ namespace BuiHuiCamping.API.Controllers
                 foreach (var t in tents)
                 {
                     t.Status = "Available";
+                    t.IsQrUnlocked = false;
                 }
                 await _context.SaveChangesAsync();
 
                 await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+                await _hubContext.Clients.All.SendAsync("BookingQrStatusChanged");
+                await _hubContext.Clients.All.SendAsync("OrderUpdated");
 
                 return Ok(new { message = "Đã xóa toàn bộ dữ liệu Bookings & Orders và reset bộ đếm ID về 1 thành công!" });
             }
