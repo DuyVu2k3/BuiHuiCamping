@@ -47,6 +47,9 @@ namespace BuiHuiCamping.API.Controllers
                     .ThenInclude(o => o.Tent!)
                         .ThenInclude(t => t.Zone)
                 .Include(od => od.Order!)
+                    .ThenInclude(o => o.Tent!)
+                        .ThenInclude(t => t.Bookings)
+                .Include(od => od.Order!)
                     .ThenInclude(o => o.Booking)
                 .Where(od => od.Order != null && od.Order.Status == "Unpaid" && od.Status != "Delivered" && od.Status != "Cancelled")
                 .ToListAsync();
@@ -56,6 +59,20 @@ namespace BuiHuiCamping.API.Controllers
                 .GroupBy(od => od.BatchId ?? od.Id.ToString())
                 .Select(g => {
                     var first = g.First();
+                    var tentObj = first.Order?.Tent;
+                    var bookingObj = first.Order?.Booking;
+                    var activeBookingObj = tentObj?.Bookings?.FirstOrDefault(b => b.Status == "Booked" || b.Status == "Occupied" || b.Status == "Pending") ?? bookingObj;
+
+                    string resolveCustomerName = "Khách hàng";
+                    if (activeBookingObj != null && !string.IsNullOrEmpty(activeBookingObj.CustomerName) && !activeBookingObj.CustomerName.StartsWith("Khách Lều") && !activeBookingObj.CustomerName.StartsWith("Khách lều"))
+                    {
+                        resolveCustomerName = activeBookingObj.CustomerName;
+                    }
+                    else if (bookingObj != null && !string.IsNullOrEmpty(bookingObj.CustomerName) && !bookingObj.CustomerName.StartsWith("Khách Lều") && !bookingObj.CustomerName.StartsWith("Khách lều"))
+                    {
+                        resolveCustomerName = bookingObj.CustomerName;
+                    }
+
                     return new
                     {
                         id = first.BatchId ?? first.Id.ToString(),
@@ -63,14 +80,14 @@ namespace BuiHuiCamping.API.Controllers
                         status = first.Status, // Pending, Preparing, Ready
                         createdAt = g.Min(od => od.CreatedAt),
                         tent = new {
-                            id = first.Order?.Tent?.Id,
-                            name = first.Order?.Tent?.Name,
-                            zoneName = first.Order?.Tent?.Zone?.Name ?? "",
-                            status = first.Order?.Tent?.Status
+                            id = tentObj?.Id,
+                            name = tentObj?.Name,
+                            zoneName = tentObj?.Zone?.Name ?? "",
+                            status = tentObj?.Status
                         },
                         booking = new {
-                            id = first.Order?.Booking?.Id,
-                            customerName = first.Order?.Booking?.CustomerName ?? ""
+                            id = activeBookingObj?.Id ?? bookingObj?.Id,
+                            customerName = resolveCustomerName
                         },
                         orderDetails = g.Select(od => new {
                             id = od.Id,

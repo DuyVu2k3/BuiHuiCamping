@@ -78,21 +78,9 @@ export default function ReceptionistOrdersPage() {
     const tentNameFormatted = rawTentName.startsWith("Lều") ? rawTentName : `Lều ${rawTentName}`;
     const zoneFormatted = (rawZone && !rawZone.startsWith("Khu")) ? `Khu ${rawZone}` : rawZone;
     
-    // Tent location (e.g. "Khu B - Lều 2")
+    // Location string (e.g. "Khu A - Lều 2")
     const tentLocation = zoneFormatted ? `${zoneFormatted} - ${tentNameFormatted}` : tentNameFormatted;
-    
-    const rawCustomerName = order.booking?.customerName || "";
-    const isGenericName = !rawCustomerName || 
-      rawCustomerName.toLowerCase().startsWith("khách lều") || 
-      rawCustomerName.toLowerCase().startsWith("khách bùi hui") ||
-      rawCustomerName.toLowerCase() === rawTentName.toLowerCase();
-
-    let displayTitle = "";
-    if (isGenericName) {
-      displayTitle = `Khách: ${tentLocation}`;
-    } else {
-      displayTitle = `Khách: ${rawCustomerName} (${tentLocation})`;
-    }
+    const customerName = order.booking?.customerName || "Khách hàng";
 
     return (
       <div className="bg-white rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all group relative overflow-hidden">
@@ -100,13 +88,18 @@ export default function ReceptionistOrdersPage() {
         
         <div className="flex justify-between items-start mb-3 pl-2">
           <div>
-            <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-2 py-1 rounded-lg mb-2">
+            <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-2 py-1 rounded-lg mb-1.5">
               <Clock size={12} />
               <span className="text-xs font-bold">
                 {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
               </span>
             </div>
-            <h3 className="text-base font-black text-[#1B4D3E] tracking-tight">{displayTitle}</h3>
+            {/* Line 1: Customer Representative Name */}
+            <h3 className="text-base font-black text-[#1B4D3E] tracking-tight">Khách: {customerName}</h3>
+            {/* Line 2: Zone & Tent Number */}
+            <p className="text-xs font-extrabold text-slate-600 mt-0.5 flex items-center gap-1">
+              <span>📍 {tentLocation}</span>
+            </p>
           </div>
         </div>
 
