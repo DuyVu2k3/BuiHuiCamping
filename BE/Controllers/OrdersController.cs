@@ -106,6 +106,56 @@ namespace BuiHuiCamping.API.Controllers
             return Ok(tickets);
         }
 
+        public static Tent? FindMatchingTent(IEnumerable<Tent> allTents, string inputTent)
+        {
+            if (string.IsNullOrWhiteSpace(inputTent)) return null;
+            inputTent = inputTent.Trim();
+
+            // 1. QRCodeData match
+            var match = allTents.FirstOrDefault(t => 
+                !string.IsNullOrEmpty(t.QRCodeData) && 
+                t.QRCodeData.EndsWith($"?tent={inputTent}", StringComparison.OrdinalIgnoreCase));
+            if (match != null) return match;
+
+            // 2. Exact Zone.Tent match e.g. "Khu B.1" or "Khu B.Lều 1"
+            match = allTents.FirstOrDefault(t => 
+                t.Zone != null && 
+                (
+                    $"{t.Zone.Name}.{t.Name}".Equals(inputTent, StringComparison.OrdinalIgnoreCase) ||
+                    $"{t.Zone.Name.Replace("Khu ", "")}.{t.Name}".Equals(inputTent, StringComparison.OrdinalIgnoreCase) ||
+                    $"{t.Zone.Name}.Lều {t.Name}".Equals(inputTent, StringComparison.OrdinalIgnoreCase) ||
+                    $"{t.Zone.Name.Replace("Khu ", "")}.Lều {t.Name}".Equals(inputTent, StringComparison.OrdinalIgnoreCase)
+                )
+            );
+            if (match != null) return match;
+
+            // 3. Split input by '.' or '-' e.g. "Khu B.1" or "B.1"
+            if (inputTent.Contains('.') || inputTent.Contains('-'))
+            {
+                var parts = inputTent.Split(new[] { '.', '-' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2)
+                {
+                    var zoneSearch = parts[0].Trim().Replace("Khu", "", StringComparison.OrdinalIgnoreCase).Trim();
+                    var tentSearch = parts[1].Trim().Replace("Lều", "", StringComparison.OrdinalIgnoreCase).Trim();
+
+                    match = allTents.FirstOrDefault(t => 
+                        t.Zone != null &&
+                        t.Zone.Name.Replace("Khu", "", StringComparison.OrdinalIgnoreCase).Trim().Equals(zoneSearch, StringComparison.OrdinalIgnoreCase) &&
+                        t.Name.Replace("Lều", "", StringComparison.OrdinalIgnoreCase).Trim().Equals(tentSearch, StringComparison.OrdinalIgnoreCase)
+                    );
+                    if (match != null) return match;
+                }
+            }
+
+            // 4. Exact full name match
+            match = allTents.FirstOrDefault(t => t.Name.Equals(inputTent, StringComparison.OrdinalIgnoreCase));
+            if (match != null) return match;
+
+            // 5. Clean name match
+            var cleanInput = inputTent.Replace("Lều", "", StringComparison.OrdinalIgnoreCase).Trim();
+            return allTents.FirstOrDefault(t => t.Name.Replace("Lều", "", StringComparison.OrdinalIgnoreCase).Trim().Equals(cleanInput, StringComparison.OrdinalIgnoreCase));
+        }
+
         // 2. Customer places an order (Appends items to Master Order under a new BatchId)
         [HttpPost]
         public async Task<IActionResult> PlaceOrder([FromBody] PlaceOrderDto dto)
@@ -115,21 +165,12 @@ namespace BuiHuiCamping.API.Controllers
                 return BadRequest("Thiếu thông tin lều.");
             }
 
-            var tentNameParts = dto.TentName.Split('.');
-            var actualTentName = tentNameParts.Length > 1 ? tentNameParts[1] : dto.TentName;
-
             var allTents = await _context.Tents
                 .Include(t => t.Zone)
                 .Include(t => t.Bookings)
                 .ToListAsync();
 
-            var tent = allTents.FirstOrDefault(t => 
-                (!string.IsNullOrEmpty(t.QRCodeData) && t.QRCodeData.EndsWith($"?tent={dto.TentName}", StringComparison.OrdinalIgnoreCase)) ||
-                t.Name.Equals(dto.TentName, StringComparison.OrdinalIgnoreCase) ||
-                (t.Zone != null && $"{t.Zone.Name}.{t.Name}".Equals(dto.TentName, StringComparison.OrdinalIgnoreCase)) ||
-                (t.Zone != null && $"{t.Zone.Name.Replace("Khu ", "")}.{t.Name}".Equals(dto.TentName, StringComparison.OrdinalIgnoreCase)) ||
-                t.Name.Equals(actualTentName, StringComparison.OrdinalIgnoreCase)
-            );
+            var tent = FindMatchingTent(allTents, dto.TentName);
 
             if (tent == null) return NotFound("Không tìm thấy Lều này trong hệ thống.");
 

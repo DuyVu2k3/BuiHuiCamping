@@ -80,12 +80,7 @@ namespace BuiHuiCamping.API.Controllers
                 .Include(t => t.Bookings)
                 .ToListAsync();
             
-            var tentEntity = allTents.FirstOrDefault(t => 
-                (!string.IsNullOrEmpty(t.QRCodeData) && t.QRCodeData.EndsWith($"?tent={tent}", StringComparison.OrdinalIgnoreCase)) ||
-                t.Name.Equals(tent, StringComparison.OrdinalIgnoreCase) ||
-                (t.Zone != null && $"{t.Zone.Name}.{t.Name}".Equals(tent, StringComparison.OrdinalIgnoreCase)) ||
-                (t.Zone != null && $"{t.Zone.Name.Replace("Khu ", "")}.{t.Name}".Equals(tent, StringComparison.OrdinalIgnoreCase))
-            );
+            var tentEntity = OrdersController.FindMatchingTent(allTents, tent);
 
             if (tentEntity == null)
                 return NotFound(new { active = false, message = "Không tìm thấy thông tin lều." });
