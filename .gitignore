@@ -1,0 +1,17 @@
+# Dependencies & Build Outputs
+node_modules/
+dist/
+build/
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# System & OS Files
+.DS_Store
+Thumbs.db
+*.log

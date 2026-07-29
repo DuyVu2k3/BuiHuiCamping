@@ -1,0 +1,7 @@
+manager: http://localhost:5173/manager
+
+staff letan: http://localhost:5173/receptionist
+
+staff: http://localhost:5173/waiter
+
+customer: http://localhost:5173/customer
