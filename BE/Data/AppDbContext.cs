@@ -20,6 +20,30 @@ namespace BuiHuiCamping.API.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            modelBuilder.Entity<Booking>()
+                .Property(b => b.DepositAmount)
+                .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<Booking>()
+                .Property(b => b.TotalPrice)
+                .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<MenuItem>()
+                .Property(m => m.Price)
+                .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<Order>()
+                .Property(o => o.TotalAmount)
+                .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<OrderDetail>()
+                .Property(od => od.UnitPrice)
+                .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<Tent>()
+                .Property(t => t.Price)
+                .HasColumnType("decimal(18,2)");
+
             modelBuilder.Entity<OrderDetail>()
                 .HasOne(od => od.Order)
                 .WithMany(o => o.OrderDetails)
