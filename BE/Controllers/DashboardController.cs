@@ -76,7 +76,7 @@ namespace BuiHuiCamping.API.Controllers
 
                     string rawZone = tent?.Zone?.Name ?? "";
                     string rawTentName = tent?.Name ?? "";
-                    string tentNameFormatted = rawTentName.StartsWith("Lều") ? rawTentName : `Lều ${rawTentName}`;
+                    string tentNameFormatted = rawTentName.StartsWith("Lều") ? rawTentName : $"Lều {rawTentName}";
                     string zoneFormatted = (!string.IsNullOrEmpty(rawZone) && !rawZone.StartsWith("Khu")) ? $"Khu {rawZone}" : rawZone;
                     string locationName = !string.IsNullOrEmpty(zoneFormatted) ? $"{zoneFormatted} - {tentNameFormatted}" : tentNameFormatted;
 

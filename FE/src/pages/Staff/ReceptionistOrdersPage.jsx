@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
-import { CheckCircle2, Clock, Flame, Info, ChefHat, BellRing } from 'lucide-react';
+import { CheckCircle2, Clock, Flame, Info, ChefHat, BellRing, CreditCard } from 'lucide-react';
+import MasterBillModal from './MasterBillModal';
+import { getApiUrl } from '../../apiConfig';
 
 export default function ReceptionistOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newOrderAlert, setNewOrderAlert] = useState(null);
+  const [selectedBillBooking, setSelectedBillBooking] = useState(null);
 
   const fetchOrders = async () => {
     try {
-      const res = await fetch('https://localhost:7248/api/Orders');
+      const res = await fetch(getApiUrl('/api/Orders'));
       const data = await res.json();
       setOrders(data);
     } catch (err) {
@@ -184,50 +187,58 @@ export default function ReceptionistOrdersPage() {
           <div className="text-slate-400 font-bold animate-pulse">Đang tải dữ liệu...</div>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8 overflow-hidden pb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1 overflow-hidden pb-4">
           
-          {/* Column 1: Mới Đặt */}
-          <div className="bg-[#FAF7F2] rounded-3xl p-6 flex flex-col border border-[#E6E2D8] overflow-hidden">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-500 flex items-center justify-center shadow-sm">
-                  <Flame size={20} />
+          {/* Column 1: Đơn Mới (Pending) */}
+          <div className="bg-slate-50/50 p-6 rounded-[2.5rem] border border-slate-200/60 flex flex-col h-full overflow-hidden">
+            <div className="flex justify-between items-center mb-4 px-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
+                  <Flame size={18} />
                 </div>
-                <h2 className="text-xl font-black text-slate-800">Đơn Mới</h2>
+                <h2 className="text-xl font-bold text-slate-800">Đơn Mới</h2>
               </div>
-              <span className="bg-rose-500 text-white font-bold px-3 py-1 rounded-full shadow-sm">{pendingOrders.length}</span>
+              <span className="bg-rose-500 text-white font-extrabold text-xs px-2.5 py-1 rounded-full">
+                {pendingOrders.length}
+              </span>
             </div>
-            
-            <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
               {pendingOrders.length === 0 ? (
-                <div className="h-40 flex items-center justify-center text-slate-400 font-medium text-sm border-2 border-dashed border-slate-200 rounded-3xl">
-                  Chưa có đơn mới
+                <div className="h-full flex items-center justify-center text-slate-400 font-medium text-sm border-2 border-dashed border-slate-200 rounded-3xl">
+                  Chưa có đơn hàng mới nào
                 </div>
               ) : (
-                pendingOrders.map(order => <OrderCard key={order.id} order={order} isPending={true} />)
+                pendingOrders.map(order => (
+                  <OrderCard key={order.id} order={order} isPending={true} />
+                ))
               )}
             </div>
           </div>
 
-          {/* Column 2: Đang Nấu */}
-          <div className="bg-amber-50/50 rounded-3xl p-6 flex flex-col border border-amber-100/50 overflow-hidden">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shadow-sm">
-                  <ChefHat size={20} />
+          {/* Column 2: Đang Làm Bếp (Preparing) */}
+          <div className="bg-slate-50/50 p-6 rounded-[2.5rem] border border-slate-200/60 flex flex-col h-full overflow-hidden">
+            <div className="flex justify-between items-center mb-4 px-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
+                  <ChefHat size={18} />
                 </div>
-                <h2 className="text-xl font-black text-slate-800">Đang làm Bếp</h2>
+                <h2 className="text-xl font-bold text-slate-800">Đang làm Bếp</h2>
               </div>
-              <span className="bg-amber-500 text-white font-bold px-3 py-1 rounded-full shadow-sm">{preparingOrders.length}</span>
+              <span className="bg-amber-500 text-white font-extrabold text-xs px-2.5 py-1 rounded-full">
+                {preparingOrders.length}
+              </span>
             </div>
-            
-            <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
               {preparingOrders.length === 0 ? (
-                <div className="h-40 flex items-center justify-center text-slate-400 font-medium text-sm border-2 border-dashed border-slate-200 rounded-3xl">
+                <div className="h-full flex items-center justify-center text-slate-400 font-medium text-sm border-2 border-dashed border-slate-200 rounded-3xl">
                   Bếp đang rảnh
                 </div>
               ) : (
-                preparingOrders.map(order => <OrderCard key={order.id} order={order} isPending={false} />)
+                preparingOrders.map(order => (
+                  <OrderCard key={order.id} order={order} isPending={false} />
+                ))
               )}
             </div>
           </div>

@@ -18,11 +18,19 @@ import {
   Utensils,
   Compass,
   CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Sparkles,
+  RefreshCw,
+  Plus,
   Trash2,
   QrCode,
   Lock,
   Unlock,
+  CreditCard,
+  Receipt,
 } from "lucide-react";
+import MasterBillModal from "./MasterBillModal";
 import toast from "react-hot-toast";
 import { getApiUrl } from "../../apiConfig";
 import signalRService from "../../services/signalrService";
@@ -116,10 +124,14 @@ export default function ReceptionistBookingPage() {
     };
 
     signalRService.on("TentStatusChanged", handleTentStatusChanged);
+    signalRService.on("BookingQrStatusChanged", handleTentStatusChanged);
+    signalRService.on("OrderUpdated", handleTentStatusChanged);
     signalRService.on("NewBookingRequest", handleNewBookingRequest);
 
     return () => {
       signalRService.off("TentStatusChanged", handleTentStatusChanged);
+      signalRService.off("BookingQrStatusChanged", handleTentStatusChanged);
+      signalRService.off("OrderUpdated", handleTentStatusChanged);
       signalRService.off("NewBookingRequest", handleNewBookingRequest);
     };
   }, []);
@@ -266,6 +278,8 @@ export default function ReceptionistBookingPage() {
     });
     toast.success("Đã bỏ 1 lều khỏi danh sách chốt!");
   };
+
+  const [selectedMasterBill, setSelectedMasterBill] = useState(null);
 
   // Date Range Filter States (default: today -> tomorrow)
   const [searchParams] = useSearchParams();
@@ -1127,12 +1141,22 @@ export default function ReceptionistBookingPage() {
                         </div>
                       </div>
                       <button
-                        onClick={() => handleBookingAction("checkout")}
-                        className="w-full bg-secondary text-on-secondary py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-secondary/90 transition-all font-bold text-lg shadow-lg"
+                        onClick={() => setSelectedMasterBill({
+                          bookingId: activeActionBooking.id,
+                          tentId: activeActionBooking.tentId || activeActionBooking.bookingTents?.[0]?.id,
+                          tentName: activeActionBooking.tentName || activeActionBooking.bookingTents?.[0]?.name
+                        })}
+                        className="w-full bg-[#1B4D3E] text-white py-3.5 rounded-2xl flex items-center justify-center gap-2.5 hover:bg-[#153d31] transition-all font-bold text-sm shadow-md active:scale-95 mb-2"
                       >
-                        <CheckCircle2 size={24} />
-                        Thanh toán ({remainingAmount.toLocaleString("vi-VN")}đ)
-                        & Trả lều
+                        <CreditCard size={18} className="text-emerald-300" />
+                        Xem Master Bill (Lều + Đồ Ăn/Uống)
+                      </button>
+                      <button
+                        onClick={() => handleBookingAction("checkout")}
+                        className="w-full bg-secondary text-on-secondary py-3.5 rounded-2xl flex items-center justify-center gap-2.5 hover:bg-secondary/90 transition-all font-bold text-sm shadow-lg"
+                      >
+                        <CheckCircle2 size={20} />
+                        Thanh toán Nhanh ({remainingAmount.toLocaleString("vi-VN")}đ) & Trả lều
                       </button>
                     </div>
                   )}
@@ -1145,6 +1169,19 @@ export default function ReceptionistBookingPage() {
           </p>
         </div>
       </aside>
+
+      <MasterBillModal
+        isOpen={!!selectedMasterBill}
+        onClose={() => setSelectedMasterBill(null)}
+        bookingId={selectedMasterBill?.bookingId}
+        tentId={selectedMasterBill?.tentId}
+        tentName={selectedMasterBill?.tentName}
+        onCheckoutSuccess={() => {
+          setSelectedMasterBill(null);
+          setActiveActionBooking(null);
+          fetchZones();
+        }}
+      />
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }

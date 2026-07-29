@@ -2,9 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { Tent, ClipboardList, Bell, X, CheckCheck, Trash2, Info, Sparkles, Calendar, CreditCard } from 'lucide-react';
 import signalRService from '../../services/signalrService';
+import MasterBillModal from './MasterBillModal';
 
 export default function ReceptionistLayout() {
   const navigate = useNavigate();
+  const [selectedBillTent, setSelectedBillTent] = useState(null);
   const [notifications, setNotifications] = useState([
     {
       id: 1,
@@ -53,10 +55,11 @@ export default function ReceptionistLayout() {
       const newNotif = {
         id: Date.now(),
         title: "💳 YÊU CẦU TRẢ LỀU & THANH TOÁN",
-        message: `Khách tại Lều/Bàn: ${tentName} vừa báo trả lều và thanh toán master bill!`,
+        message: `Khách tại ${tentName} vừa báo trả lều và thanh toán master bill!`,
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         isRead: false,
-        type: "checkout"
+        type: "checkout",
+        tentName: tentName
       };
 
       setNotifications(prev => [newNotif, ...prev]);
@@ -244,26 +247,32 @@ export default function ReceptionistLayout() {
                     </div>
                   ) : (
                     notifications.map((notif) => {
-                      const isBooking = notif.type === 'booking';
+                      const isBookingRequest = notif.type === 'booking';
                       const isCheckout = notif.type === 'checkout';
 
                       return (
                         <div 
                           key={notif.id}
-                          onClick={() => handleNotifClick(notif)}
-                          className={`p-3.5 rounded-2xl transition-all cursor-pointer relative group ${
+                          onClick={() => {
+                            markAsRead(notif.id);
+                            if (notif.type === "checkout" || notif.type === "order") {
+                              setSelectedBillTent(notif.tentName || "");
+                              setIsNotifOpen(false);
+                            }
+                          }}
+                          className={`p-3.5 rounded-2xl transition-all cursor-pointer border relative ${
                             !notif.isRead 
-                              ? isBooking 
-                                ? 'bg-amber-50/80 border-l-4 border-amber-500' 
-                                : isCheckout 
-                                  ? 'bg-rose-50/80 border-l-4 border-rose-500' 
-                                  : 'bg-emerald-50/80 border-l-4 border-emerald-500'
-                              : 'bg-white hover:bg-slate-50'
+                              ? isBookingRequest
+                                ? 'bg-amber-50/70 border-amber-200/80 shadow-sm'
+                                : isCheckout
+                                ? 'bg-rose-50/70 border-rose-200/80 shadow-sm'
+                                : 'bg-emerald-50/50 border-emerald-200/60 shadow-sm' 
+                              : 'bg-slate-50/60 border-slate-100 hover:bg-slate-100/60'
                           }`}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2">
-                              {isBooking ? (
+                              {isBookingRequest ? (
                                 <Sparkles size={16} className="text-amber-600 shrink-0 mt-0.5" />
                               ) : isCheckout ? (
                                 <CreditCard size={16} className="text-rose-600 shrink-0 mt-0.5" />
@@ -297,7 +306,7 @@ export default function ReceptionistLayout() {
                 {/* Footer */}
                 <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    Bấm thông báo để tự động chuyển đến mốc ngày cần duyệt
+                    Bấm thông báo để tự động xem Master Bill & Thanh toán
                   </p>
                 </div>
               </div>
@@ -309,6 +318,12 @@ export default function ReceptionistLayout() {
           <Outlet />
         </div>
       </main>
+
+      <MasterBillModal 
+        isOpen={!!selectedBillTent}
+        onClose={() => setSelectedBillTent(null)}
+        tentName={selectedBillTent}
+      />
     </div>
   );
 }

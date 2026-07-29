@@ -238,6 +238,117 @@ namespace BuiHuiCamping.API.Controllers
             return Ok(booking);
         }
 
+        [HttpGet("{id}/master-bill")]
+        public async Task<IActionResult> GetMasterBill(int id)
+        {
+            var booking = await _context.Bookings
+                .Include(b => b.Tents)
+                    .ThenInclude(t => t.Zone)
+                .Include(b => b.Orders)
+                    .ThenInclude(o => o.OrderDetails)
+                        .ThenInclude(od => od.MenuItem)
+                .FirstOrDefaultAsync(b => b.Id == id);
+
+            if (booking == null) return NotFound("Không tìm thấy Booking.");
+
+            var tentsList = booking.Tents.Select(t => {
+                string rZone = t.Zone?.Name ?? "";
+                string rTent = t.Name ?? "";
+                string tFormatted = rTent.StartsWith("Lều") ? rTent : $"Lều {rTent}";
+                string zFormatted = (!string.IsNullOrEmpty(rZone) && !rZone.StartsWith("Khu")) ? $"Khu {rZone}" : rZone;
+                string locName = !string.IsNullOrEmpty(zFormatted) ? $"{zFormatted} - {tFormatted}" : tFormatted;
+                return new {
+                    id = t.Id,
+                    name = rTent,
+                    zoneName = rZone,
+                    locationName = locName,
+                    price = t.Price
+                };
+            }).ToList();
+
+            string combinedLocationName = string.Join(", ", tentsList.Select(t => t.locationName));
+            var firstTent = tentsList.FirstOrDefault();
+
+            decimal tentRentalFee = booking.TotalPrice > 0 ? booking.TotalPrice : tentsList.Sum(t => t.price);
+            decimal depositPaid = booking.DepositAmount;
+
+            var activeOrders = booking.Orders.Where(o => o.Status != "Cancelled").ToList();
+            var allOrderDetails = activeOrders.SelectMany(o => o.OrderDetails).Where(od => od.Status != "Cancelled").ToList();
+
+            var itemSummaries = allOrderDetails
+                .GroupBy(od => od.MenuItemId)
+                .Select(g => {
+                    var first = g.First();
+                    var quantity = g.Sum(od => od.Quantity);
+                    var unitPrice = first.UnitPrice > 0 ? first.UnitPrice : (first.MenuItem?.Price ?? 0);
+                    return new {
+                        menuItemId = first.MenuItemId,
+                        name = first.MenuItem?.Name ?? "Món ăn/Dịch vụ",
+                        quantity = quantity,
+                        unitPrice = unitPrice,
+                        totalPrice = quantity * unitPrice
+                    };
+                })
+                .ToList();
+
+            decimal foodAndServicesTotal = itemSummaries.Sum(i => i.totalPrice);
+            decimal grandTotal = tentRentalFee + foodAndServicesTotal;
+            decimal remainingBalance = Math.Max(0, grandTotal - depositPaid);
+
+            return Ok(new {
+                bookingId = booking.Id,
+                customerName = booking.CustomerName,
+                phoneNumber = booking.PhoneNumber,
+                status = booking.Status,
+                checkInDate = booking.CheckInDate,
+                tentsCount = tentsList.Count,
+                tents = tentsList,
+                locationName = combinedLocationName,
+                tent = new {
+                    id = firstTent?.id,
+                    name = firstTent?.name,
+                    zoneName = firstTent?.zoneName,
+                    locationName = combinedLocationName,
+                    price = firstTent?.price ?? 0
+                },
+                tentRentalFee = tentRentalFee,
+                depositPaid = depositPaid,
+                foodAndServices = itemSummaries,
+                foodAndServicesTotal = foodAndServicesTotal,
+                grandTotal = grandTotal,
+                remainingBalance = remainingBalance
+            });
+        }
+
+        [HttpGet("master-bill-by-tent")]
+        public async Task<IActionResult> GetMasterBillByTent([FromQuery] int? tentId, [FromQuery] string? tentName)
+        {
+            var allTents = await _context.Tents
+                .Include(t => t.Zone)
+                .Include(t => t.Bookings)
+                    .ThenInclude(b => b.Orders)
+                        .ThenInclude(o => o.OrderDetails)
+                            .ThenInclude(od => od.MenuItem)
+                .ToListAsync();
+
+            Tent? tent = null;
+            if (tentId.HasValue && tentId.Value > 0)
+            {
+                tent = allTents.FirstOrDefault(t => t.Id == tentId.Value);
+            }
+            if (tent == null && !string.IsNullOrEmpty(tentName))
+            {
+                tent = OrdersController.FindMatchingTent(allTents, tentName);
+            }
+
+            if (tent == null) return NotFound("Không tìm thấy Lều.");
+
+            var activeBooking = tent.Bookings?.FirstOrDefault(b => b.Status == "Occupied" || b.Status == "Booked" || b.Status == "Pending");
+            if (activeBooking == null) return NotFound("Lều hiện chưa có thông tin đặt lều.");
+
+            return await GetMasterBill(activeBooking.Id);
+        }
+
         [HttpPut("{id}/checkout")]
         public async Task<IActionResult> Checkout(int id)
         {
@@ -251,17 +362,22 @@ namespace BuiHuiCamping.API.Controllers
             booking.Status = "CheckedOut";
             booking.IsQrUnlocked = false; // Lock QR upon checkout
 
+            foreach (var tent in booking.Tents)
+            {
+                tent.Status = "Available";
+                tent.IsQrUnlocked = false;
+            }
+
             foreach (var order in booking.Orders)
             {
-                if (order.Status == "Unpaid")
-                {
-                    order.Status = "Paid";
-                    order.UpdatedAt = DateTime.UtcNow;
-                }
+                order.Status = "Paid";
+                order.UpdatedAt = DateTime.UtcNow;
             }
             
             await _context.SaveChangesAsync();
             await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            await _hubContext.Clients.All.SendAsync("BookingQrStatusChanged");
+            await _hubContext.Clients.All.SendAsync("OrderUpdated");
             return Ok(booking);
         }
 
