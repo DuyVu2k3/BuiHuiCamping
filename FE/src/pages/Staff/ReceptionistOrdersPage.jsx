@@ -78,28 +78,20 @@ export default function ReceptionistOrdersPage() {
     const tentNameFormatted = rawTentName.startsWith("Lều") ? rawTentName : `Lều ${rawTentName}`;
     const zoneFormatted = (rawZone && !rawZone.startsWith("Khu")) ? `Khu ${rawZone}` : rawZone;
     
-    // Combine Zone and Tent (e.g. "Khu B - Lều 2" or "Lều 2")
+    // Tent location (e.g. "Khu B - Lều 2")
     const tentLocation = zoneFormatted ? `${zoneFormatted} - ${tentNameFormatted}` : tentNameFormatted;
     
     const rawCustomerName = order.booking?.customerName || "";
-    let customerNameClean = rawCustomerName;
-    if (customerNameClean.startsWith("Khách lều")) {
-      const parts = customerNameClean.replace("Khách lều", "").trim(); // e.g. "Khu B.2"
-      if (parts) {
-        const dotParts = parts.split('.');
-        const zoneStr = dotParts[0];
-        const tentStr = dotParts.length > 1 ? dotParts[1] : dotParts[0];
-        const formattedZone = zoneStr.startsWith("Khu") ? zoneStr : `Khu ${zoneStr}`;
-        const formattedTent = tentStr.startsWith("Lều") ? tentStr : `Lều ${tentStr}`;
-        customerNameClean = `${formattedZone} - ${formattedTent}`;
-      }
-    }
+    const isGenericName = !rawCustomerName || 
+      rawCustomerName.toLowerCase().startsWith("khách lều") || 
+      rawCustomerName.toLowerCase().startsWith("khách bùi hui") ||
+      rawCustomerName.toLowerCase() === rawTentName.toLowerCase();
 
-    let titleText = `Khách: ${tentLocation}`;
-    if (customerNameClean && customerNameClean !== tentLocation && customerNameClean !== rawTentName && !customerNameClean.includes(rawTentName)) {
-      titleText = `Khách: ${customerNameClean} (${tentLocation})`;
-    } else if (customerNameClean && customerNameClean.includes("Khu")) {
-      titleText = `Khách: ${customerNameClean}`;
+    let displayTitle = "";
+    if (isGenericName) {
+      displayTitle = `Khách: ${tentLocation}`;
+    } else {
+      displayTitle = `Khách: ${rawCustomerName} (${tentLocation})`;
     }
 
     return (
@@ -114,7 +106,7 @@ export default function ReceptionistOrdersPage() {
                 {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
               </span>
             </div>
-            <h3 className="text-base font-black text-[#1B4D3E] tracking-tight">{titleText}</h3>
+            <h3 className="text-base font-black text-[#1B4D3E] tracking-tight">{displayTitle}</h3>
           </div>
         </div>
 
