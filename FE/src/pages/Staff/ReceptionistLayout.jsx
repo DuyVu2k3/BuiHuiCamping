@@ -82,13 +82,11 @@ export default function ReceptionistLayout() {
     signalRService.on("NewBookingRequest", handleNewBookingRequest);
     signalRService.on("CheckoutRequested", handleCheckoutRequested);
     signalRService.on("NewFoodOrder", handleNewFoodOrder);
-    signalRService.on("ReceiveOrder", handleNewFoodOrder);
 
     return () => {
       signalRService.off("NewBookingRequest", handleNewBookingRequest);
       signalRService.off("CheckoutRequested", handleCheckoutRequested);
       signalRService.off("NewFoodOrder", handleNewFoodOrder);
-      signalRService.off("ReceiveOrder", handleNewFoodOrder);
     };
   }, []);
 

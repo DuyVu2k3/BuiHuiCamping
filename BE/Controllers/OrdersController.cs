@@ -261,12 +261,6 @@ namespace BuiHuiCamping.API.Controllers
             };
 
             await _hubContext.Clients.All.SendAsync("NewFoodOrder", orderPayload);
-            await _hubContext.Clients.All.SendAsync("ReceiveOrder", new {
-                OrderId = batchId,
-                TentName = tent.Name,
-                CustomerName = orderPayload.customerName,
-                Message = $"Lều {tent.Name} vừa gọi món mới: {orderPayload.itemsSummary}"
-            });
             await _hubContext.Clients.All.SendAsync("OrderUpdated");
 
             return Ok(new { batchId, orderId = masterOrder.Id, addedTotal });
