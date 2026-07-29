@@ -62,8 +62,16 @@ namespace BuiHuiCamping.API.Controllers
                         batchId = first.BatchId,
                         status = first.Status, // Pending, Preparing, Ready
                         createdAt = g.Min(od => od.CreatedAt),
-                        tent = first.Order?.Tent,
-                        booking = first.Order?.Booking,
+                        tent = new {
+                            id = first.Order?.Tent?.Id,
+                            name = first.Order?.Tent?.Name,
+                            zoneName = first.Order?.Tent?.Zone?.Name ?? "",
+                            status = first.Order?.Tent?.Status
+                        },
+                        booking = new {
+                            id = first.Order?.Booking?.Id,
+                            customerName = first.Order?.Booking?.CustomerName ?? ""
+                        },
                         orderDetails = g.Select(od => new {
                             id = od.Id,
                             menuItemId = od.MenuItemId,

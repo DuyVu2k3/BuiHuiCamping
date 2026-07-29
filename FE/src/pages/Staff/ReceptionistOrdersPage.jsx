@@ -73,14 +73,33 @@ export default function ReceptionistOrdersPage() {
   const preparingOrders = orders.filter(o => o.status === 'Preparing');
 
   const OrderCard = ({ order, isPending }) => {
-    const zoneName = order.tent?.zone?.name || "";
+    const rawZone = order.tent?.zoneName || order.tent?.zone?.name || "";
     const rawTentName = order.tent?.name || "";
     const tentNameFormatted = rawTentName.startsWith("Lều") ? rawTentName : `Lều ${rawTentName}`;
-    const locationStr = zoneName ? `${zoneName} - ${tentNameFormatted}` : tentNameFormatted;
+    const zoneFormatted = (rawZone && !rawZone.startsWith("Khu")) ? `Khu ${rawZone}` : rawZone;
+    
+    // Combine Zone and Tent (e.g. "Khu B - Lều 2" or "Lều 2")
+    const tentLocation = zoneFormatted ? `${zoneFormatted} - ${tentNameFormatted}` : tentNameFormatted;
+    
+    const rawCustomerName = order.booking?.customerName || "";
+    let customerNameClean = rawCustomerName;
+    if (customerNameClean.startsWith("Khách lều")) {
+      const parts = customerNameClean.replace("Khách lều", "").trim(); // e.g. "Khu B.2"
+      if (parts) {
+        const dotParts = parts.split('.');
+        const zoneStr = dotParts[0];
+        const tentStr = dotParts.length > 1 ? dotParts[1] : dotParts[0];
+        const formattedZone = zoneStr.startsWith("Khu") ? zoneStr : `Khu ${zoneStr}`;
+        const formattedTent = tentStr.startsWith("Lều") ? tentStr : `Lều ${tentStr}`;
+        customerNameClean = `${formattedZone} - ${formattedTent}`;
+      }
+    }
 
-    let titleText = `Khách: ${locationStr}`;
-    if (order.booking?.customerName && !order.booking.customerName.startsWith("Khách lều") && !order.booking.customerName.startsWith("Khách Lều")) {
-      titleText = `Khách: ${order.booking.customerName} (${locationStr})`;
+    let titleText = `Khách: ${tentLocation}`;
+    if (customerNameClean && customerNameClean !== tentLocation && customerNameClean !== rawTentName && !customerNameClean.includes(rawTentName)) {
+      titleText = `Khách: ${customerNameClean} (${tentLocation})`;
+    } else if (customerNameClean && customerNameClean.includes("Khu")) {
+      titleText = `Khách: ${customerNameClean}`;
     }
 
     return (
