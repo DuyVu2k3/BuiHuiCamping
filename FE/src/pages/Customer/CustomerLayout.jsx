@@ -7,7 +7,7 @@ import { getApiUrl } from '../../apiConfig';
 
 export default function CustomerLayout() {
   const [searchParams] = useSearchParams();
-  const [tentName, setTentName] = useState('04');
+  const [tentName, setTentName] = useState('');
   
   // Validation state
   const [isValidating, setIsValidating] = useState(true);
@@ -20,7 +20,7 @@ export default function CustomerLayout() {
   // Handle URL parameter and session storage for Tent
   useEffect(() => {
     const tentFromUrl = searchParams.get('tent');
-    let targetTent = tentName;
+    let targetTent = '';
     if (tentFromUrl) {
       targetTent = tentFromUrl;
       setTentName(tentFromUrl);
