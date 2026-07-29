@@ -76,14 +76,18 @@ export default function ReceptionistOrdersPage() {
     const zoneName = order.tent?.zone?.name || "";
     const rawTentName = order.tent?.name || "";
     const tentNameFormatted = rawTentName.startsWith("Lều") ? rawTentName : `Lều ${rawTentName}`;
-    const fullTentTitle = zoneName ? `${zoneName} - ${tentNameFormatted}` : tentNameFormatted;
-    const customerDisplayName = order.booking?.customerName ? `Khách: ${order.booking.customerName}` : `Khách lều ${fullTentTitle}`;
+    const locationStr = zoneName ? `${zoneName} - ${tentNameFormatted}` : tentNameFormatted;
+
+    let titleText = `Khách: ${locationStr}`;
+    if (order.booking?.customerName && !order.booking.customerName.startsWith("Khách lều") && !order.booking.customerName.startsWith("Khách Lều")) {
+      titleText = `Khách: ${order.booking.customerName} (${locationStr})`;
+    }
 
     return (
       <div className="bg-white rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all group relative overflow-hidden">
         <div className={`absolute top-0 left-0 w-1.5 h-full ${isPending ? 'bg-rose-500' : 'bg-amber-500'} rounded-l-3xl`}></div>
         
-        <div className="flex justify-between items-start mb-4 pl-2">
+        <div className="flex justify-between items-start mb-3 pl-2">
           <div>
             <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-2 py-1 rounded-lg mb-2">
               <Clock size={12} />
@@ -91,8 +95,7 @@ export default function ReceptionistOrdersPage() {
                 {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
               </span>
             </div>
-            <h3 className="text-xl font-black text-[#1B4D3E] tracking-tight">{fullTentTitle}</h3>
-            <p className="text-xs text-slate-500 font-bold mt-0.5">{customerDisplayName}</p>
+            <h3 className="text-base font-black text-[#1B4D3E] tracking-tight">{titleText}</h3>
           </div>
         </div>
 
