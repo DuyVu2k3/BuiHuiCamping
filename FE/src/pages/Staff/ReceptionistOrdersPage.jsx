@@ -78,9 +78,13 @@ export default function ReceptionistOrdersPage() {
     const tentNameFormatted = rawTentName.startsWith("Lều") ? rawTentName : `Lều ${rawTentName}`;
     const zoneFormatted = (rawZone && !rawZone.startsWith("Khu")) ? `Khu ${rawZone}` : rawZone;
     
-    // Location string (e.g. "Khu A - Lều 2")
+    // Location string (e.g. "Khu B - Lều 1")
     const tentLocation = zoneFormatted ? `${zoneFormatted} - ${tentNameFormatted}` : tentNameFormatted;
-    const customerName = order.booking?.customerName || "Khách hàng";
+    
+    let customerName = order.booking?.customerName || "Khách hàng";
+    if (customerName.startsWith("Khách lều") || customerName.startsWith("Khách Lều")) {
+      customerName = "Khách hàng";
+    }
 
     return (
       <div className="bg-white rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all group relative overflow-hidden">

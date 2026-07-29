@@ -15,6 +15,7 @@ export default function CustomerLayout() {
 
   // Lifted Cart State
   const [cart, setCart] = useState([]);
+  const [tentId, setTentId] = useState(null);
 
   // Handle URL parameter and session storage for Tent
   useEffect(() => {
@@ -38,6 +39,10 @@ export default function CustomerLayout() {
       axios.get(getApiUrl(`/api/Tents/validate?tent=${encodeURIComponent(targetTent)}`))
         .then(res => {
           setIsActivated(res.data.active === true);
+          if (res.data.id) {
+            setTentId(res.data.id);
+            sessionStorage.setItem('customerTentId', res.data.id.toString());
+          }
         })
         .catch(err => {
           console.error("Lỗi xác thực QR:", err);
@@ -123,7 +128,7 @@ export default function CustomerLayout() {
 
       {/* Main Content Area */}
       <main id="main-scroll-area" className="flex-1 overflow-y-auto pb-24 bg-[#F5F5F0]">
-        <Outlet context={{ cart, setCart, tentName }} />
+        <Outlet context={{ cart, setCart, tentName, tentId }} />
       </main>
 
       {/* Bottom Navigation Bar */}

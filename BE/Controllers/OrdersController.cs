@@ -10,6 +10,7 @@ namespace BuiHuiCamping.API.Controllers
     // DTOs for Order Placement
     public class PlaceOrderDto
     {
+        public int? TentId { get; set; }
         public string TentName { get; set; } = string.Empty; // e.g. "A.1" or "Khu A.A.1"
         public string CustomerName { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
@@ -61,17 +62,9 @@ namespace BuiHuiCamping.API.Controllers
                     var first = g.First();
                     var tentObj = first.Order?.Tent;
                     var bookingObj = first.Order?.Booking;
-                    var activeBookingObj = tentObj?.Bookings?.FirstOrDefault(b => b.Status == "Booked" || b.Status == "Occupied" || b.Status == "Pending") ?? bookingObj;
+                    var activeBookingObj = bookingObj ?? tentObj?.Bookings?.FirstOrDefault(b => b.Status == "Occupied" || b.Status == "Booked" || b.Status == "Pending");
 
-                    string resolveCustomerName = "Khách hàng";
-                    if (activeBookingObj != null && !string.IsNullOrEmpty(activeBookingObj.CustomerName) && !activeBookingObj.CustomerName.StartsWith("Khách Lều") && !activeBookingObj.CustomerName.StartsWith("Khách lều"))
-                    {
-                        resolveCustomerName = activeBookingObj.CustomerName;
-                    }
-                    else if (bookingObj != null && !string.IsNullOrEmpty(bookingObj.CustomerName) && !bookingObj.CustomerName.StartsWith("Khách Lều") && !bookingObj.CustomerName.StartsWith("Khách lều"))
-                    {
-                        resolveCustomerName = bookingObj.CustomerName;
-                    }
+                    string resolveCustomerName = activeBookingObj?.CustomerName ?? "Khách hàng";
 
                     return new
                     {
@@ -170,7 +163,15 @@ namespace BuiHuiCamping.API.Controllers
                 .Include(t => t.Bookings)
                 .ToListAsync();
 
-            var tent = FindMatchingTent(allTents, dto.TentName);
+            Tent? tent = null;
+            if (dto.TentId.HasValue && dto.TentId.Value > 0)
+            {
+                tent = allTents.FirstOrDefault(t => t.Id == dto.TentId.Value);
+            }
+            if (tent == null)
+            {
+                tent = FindMatchingTent(allTents, dto.TentName);
+            }
 
             if (tent == null) return NotFound("Không tìm thấy Lều này trong hệ thống.");
 

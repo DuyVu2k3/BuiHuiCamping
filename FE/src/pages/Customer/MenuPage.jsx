@@ -14,7 +14,8 @@ export default function MenuPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Use Lifted Cart State
-  const { cart, setCart, tentName } = useOutletContext();
+  const { cart, setCart, tentName, tentId } = useOutletContext();
+
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = cart.reduce((sum, item) => sum + (item.itemData.price * item.quantity), 0);
 
@@ -50,7 +51,9 @@ export default function MenuPage() {
     setSubmitting(true);
 
     try {
+      const activeTentId = tentId || parseInt(sessionStorage.getItem('customerTentId'));
       const orderPayload = {
+        tentId: activeTentId ? activeTentId : undefined,
         tentName: tentName,
         customerName: `Khách lều ${tentName}`,
         items: cart.map(c => ({
