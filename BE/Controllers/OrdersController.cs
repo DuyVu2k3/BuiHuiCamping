@@ -108,12 +108,6 @@ namespace BuiHuiCamping.API.Controllers
             if (tent == null) return NotFound("Không tìm thấy Lều này trong hệ thống.");
 
             var activeBooking = tent.Bookings.FirstOrDefault(b => b.Status == "Booked" || b.Status == "Occupied" || b.Status == "Pending");
-            bool canOrder = tent.IsQrUnlocked || tent.Status == "Occupied" || (activeBooking != null && (activeBooking.IsQrUnlocked || activeBooking.Status == "Occupied" || activeBooking.Status == "Booked"));
-
-            if (!canOrder) 
-            {
-                return BadRequest("Mã QR của lều chưa được Lễ Tân mở khóa. Vui lòng liên hệ Lễ Tân.");
-            }
 
             // Find or Create Master Order for this Booking & Tent
             var masterOrder = await _context.Orders
