@@ -21,7 +21,6 @@ namespace BuiHuiCamping.API.Controllers
         public List<int> TentIds { get; set; } = new List<int>();
         public DateTime? CheckInDate { get; set; }
         public DateTime? CheckOutDate { get; set; }
-        public int DepositPercent { get; set; } = 50;
         public decimal DepositAmount { get; set; }
     }
 
@@ -64,6 +63,8 @@ namespace BuiHuiCamping.API.Controllers
                 booking.Tents.Add(tent);
                 tent.Status = "Booked"; 
             }
+
+            booking.TotalPrice = tents.Sum(t => t.Price);
             
             _context.Bookings.Add(booking);
             await _context.SaveChangesAsync();
@@ -95,7 +96,6 @@ namespace BuiHuiCamping.API.Controllers
                 PhoneNumber = dto.PhoneNumber,
                 CheckInDate = dto.CheckInDate,
                 CheckOutDate = dto.CheckOutDate,
-                DepositPercent = dto.DepositPercent,
                 DepositAmount = dto.DepositAmount,
                 DepositStatus = "Paid",
                 Status = "Booked"
@@ -107,6 +107,8 @@ namespace BuiHuiCamping.API.Controllers
                 booking.Tents.Add(tent);
                 tent.Status = "Booked"; 
             }
+
+            booking.TotalPrice = tents.Sum(t => t.Price);
             
             _context.Bookings.Add(booking);
             await _context.SaveChangesAsync();
@@ -144,7 +146,6 @@ namespace BuiHuiCamping.API.Controllers
                 PhoneNumber = dto.PhoneNumber,
                 CheckInDate = dto.CheckInDate,
                 CheckOutDate = dto.CheckOutDate,
-                DepositPercent = dto.DepositPercent,
                 DepositAmount = dto.DepositAmount,
                 DepositStatus = "Pending",
                 Status = "Pending"
@@ -155,6 +156,8 @@ namespace BuiHuiCamping.API.Controllers
             {
                 booking.Tents.Add(tent);
             }
+
+            booking.TotalPrice = tents.Sum(t => t.Price);
             
             _context.Bookings.Add(booking);
             await _context.SaveChangesAsync();
@@ -202,6 +205,7 @@ namespace BuiHuiCamping.API.Controllers
                 }
             }
 
+            booking.TotalPrice = booking.Tents.Sum(t => t.Price);
             booking.DepositStatus = "Paid";
             booking.Status = "Booked";
             // IsQrUnlocked is strictly controlled 100% manually by Receptionist

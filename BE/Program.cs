@@ -70,6 +70,15 @@ using (var scope = app.Services.CreateScope())
 
             IF NOT EXISTS (
                 SELECT * FROM sys.columns 
+                WHERE object_id = OBJECT_ID(N'[Bookings]') 
+                AND name = 'TotalPrice'
+            )
+            BEGIN
+                ALTER TABLE [Bookings] ADD [TotalPrice] DECIMAL(18,2) NOT NULL DEFAULT 0;
+            END
+
+            IF NOT EXISTS (
+                SELECT * FROM sys.columns 
                 WHERE object_id = OBJECT_ID(N'[Tents]') 
                 AND name = 'IsQrUnlocked'
             )

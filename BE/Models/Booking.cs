@@ -21,8 +21,8 @@ namespace BuiHuiCamping.API.Models
         
         public DateTime? CheckInDate { get; set; }
         public DateTime? CheckOutDate { get; set; }
+        public decimal TotalPrice { get; set; } = 0; // Total tent rental price for this booking
         public decimal DepositAmount { get; set; } = 0;
-        public int DepositPercent { get; set; } = 50;
         public string DepositStatus { get; set; } = "Pending"; // Pending, Paid
         public bool IsQrUnlocked { get; set; } = false; // Receptionist manual override for QR access
         

@@ -151,40 +151,10 @@ export default function CustomerLayout() {
           </NavLink>
 
           <NavLink 
-            to="/customer/cart" 
-            className={({ isActive }) => 
-              `flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-300 relative ${
-                isActive ? 'bg-[#154133] text-white font-extrabold shadow-md px-5 py-2.5' : 'text-slate-600 hover:text-slate-900'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <div className="relative">
-                  <ShoppingBag size={20} className={isActive ? 'text-white' : 'text-slate-600'} />
-                  {cartTotalCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white font-black text-[9px] rounded-full flex items-center justify-center animate-bounce shadow-sm">
-                      {cartTotalCount}
-                    </span>
-                  )}
-                </div>
-                {isActive ? (
-                  <span className="text-sm font-bold tracking-wide">Giỏ hàng</span>
-                ) : (
-                  <div className="flex flex-col text-[11px] leading-[1.1] font-semibold text-slate-600 text-left">
-                    <span>Giỏ</span>
-                    <span>hàng</span>
-                  </div>
-                )}
-              </>
-            )}
-          </NavLink>
-
-          <NavLink 
             to="/customer/history" 
             className={({ isActive }) => 
-              `flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-300 ${
-                isActive ? 'bg-[#154133] text-white font-extrabold shadow-md px-5 py-2.5' : 'text-slate-600 hover:text-slate-900'
+              `flex items-center gap-2 px-5 py-2.5 rounded-full transition-all duration-300 ${
+                isActive ? 'bg-[#154133] text-white font-extrabold shadow-md' : 'px-4 text-slate-600 hover:text-slate-900'
               }`
             }
           >
@@ -192,12 +162,9 @@ export default function CustomerLayout() {
               <>
                 <Clock size={20} className={isActive ? 'text-white' : 'text-slate-600'} />
                 {isActive ? (
-                  <span className="text-sm font-bold tracking-wide">Đã gọi</span>
+                  <span className="text-sm font-bold tracking-wide">Đã Gọi</span>
                 ) : (
-                  <div className="flex flex-col text-[11px] leading-[1.1] font-semibold text-slate-600 text-left">
-                    <span>Đã</span>
-                    <span>gọi</span>
-                  </div>
+                  <span className="text-xs font-semibold text-slate-600">Đã Gọi</span>
                 )}
               </>
             )}
