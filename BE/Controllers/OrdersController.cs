@@ -174,13 +174,32 @@ namespace BuiHuiCamping.API.Controllers
 
             await _context.SaveChangesAsync();
 
-            // SignalR notification to Kitchen / Staff
+            // Real-time SignalR notifications to Receptionist, Waiter & Kitchen Staff
+            var itemNames = newDetails.Select(d => {
+                var menuItem = _context.MenuItems.Find(d.MenuItemId);
+                return $"{d.Quantity}x {(menuItem?.Name ?? "Món")}";
+            }).ToList();
+
+            var orderPayload = new {
+                batchId = batchId,
+                orderId = masterOrder.Id,
+                tentName = tent.Name,
+                zoneName = tent.Zone?.Name ?? "Khu Cắm Trại",
+                customerName = activeBooking?.CustomerName ?? $"Khách Lều {tent.Name}",
+                phoneNumber = activeBooking?.PhoneNumber ?? "",
+                itemsSummary = string.Join(", ", itemNames),
+                totalAmount = addedTotal,
+                createdAt = DateTime.UtcNow
+            };
+
+            await _hubContext.Clients.All.SendAsync("NewFoodOrder", orderPayload);
             await _hubContext.Clients.All.SendAsync("ReceiveOrder", new {
                 OrderId = batchId,
                 TentName = tent.Name,
-                CustomerName = activeBooking.CustomerName,
-                Message = $"Lều {tent.Name} vừa gọi món mới!"
+                CustomerName = orderPayload.customerName,
+                Message = $"Lều {tent.Name} vừa gọi món mới: {orderPayload.itemsSummary}"
             });
+            await _hubContext.Clients.All.SendAsync("OrderUpdated");
 
             return Ok(new { batchId, orderId = masterOrder.Id, addedTotal });
         }

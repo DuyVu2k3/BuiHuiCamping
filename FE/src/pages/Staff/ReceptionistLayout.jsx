@@ -62,12 +62,33 @@ export default function ReceptionistLayout() {
       setNotifications(prev => [newNotif, ...prev]);
     };
 
+    const handleNewFoodOrder = (data) => {
+      const tent = data?.tentName || data?.TentName || "Lều";
+      const customer = data?.customerName || data?.CustomerName || "Khách";
+      const summary = data?.itemsSummary || data?.Message || "Đã gọi đồ ăn/uống";
+
+      const newNotif = {
+        id: Date.now(),
+        title: "🍔 ĐƠN GỌI MÓN MỚI TẠI LỀU!",
+        message: `Lều ${tent} (${customer})\nMón gọi: ${summary}`,
+        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+        isRead: false,
+        type: "order"
+      };
+
+      setNotifications(prev => [newNotif, ...prev]);
+    };
+
     signalRService.on("NewBookingRequest", handleNewBookingRequest);
     signalRService.on("CheckoutRequested", handleCheckoutRequested);
+    signalRService.on("NewFoodOrder", handleNewFoodOrder);
+    signalRService.on("ReceiveOrder", handleNewFoodOrder);
 
     return () => {
       signalRService.off("NewBookingRequest", handleNewBookingRequest);
       signalRService.off("CheckoutRequested", handleCheckoutRequested);
+      signalRService.off("NewFoodOrder", handleNewFoodOrder);
+      signalRService.off("ReceiveOrder", handleNewFoodOrder);
     };
   }, []);
 

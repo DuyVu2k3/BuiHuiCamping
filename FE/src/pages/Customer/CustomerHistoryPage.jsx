@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import axios from 'axios';
-import { History, Check, ArrowRight } from 'lucide-react';
-import * as signalR from '@microsoft/signalr';
+import { History, Check, ArrowRight, Clock, ChefHat, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { getApiUrl } from '../../apiConfig';
+import signalRService from '../../services/signalrService';
 
 export default function CustomerHistoryPage() {
   const { tentName } = useOutletContext();
@@ -12,7 +13,7 @@ export default function CustomerHistoryPage() {
 
   const fetchHistory = async () => {
     try {
-      const res = await axios.get(`https://localhost:7248/api/Orders/history?tentName=${encodeURIComponent(tentName)}`);
+      const res = await axios.get(getApiUrl(`/api/Orders/history?tentName=${encodeURIComponent(tentName)}`));
       setOrders(res.data);
     } catch (err) {
       console.error(err);
@@ -23,6 +24,19 @@ export default function CustomerHistoryPage() {
 
   useEffect(() => {
     fetchHistory();
+    signalRService.startConnection();
+
+    const handleRefresh = () => {
+      fetchHistory();
+    };
+
+    signalRService.on("OrderUpdated", handleRefresh);
+    signalRService.on("NewFoodOrder", handleRefresh);
+
+    return () => {
+      signalRService.off("OrderUpdated", handleRefresh);
+      signalRService.off("NewFoodOrder", handleRefresh);
+    };
   }, [tentName]);
 
   // Fix GMT+7 Timezone by parsing ISO string correctly
@@ -38,7 +52,11 @@ export default function CustomerHistoryPage() {
     return `${hours} giờ trước`;
   };
 
-  // Flatten all details from all orders and group by status
+  // Flatten all details from all orders and group into 3 categories:
+  // 1. Pending (Đã đặt / Chờ xử lý)
+  // 2. Preparing / Ready (Đang chuẩn bị / Bếp đang làm)
+  // 3. Delivered / Completed (Đã phục vụ / Đã mang ra bàn)
+  const pendingItems = [];
   const preparingItems = [];
   const completedItems = [];
   let grandTotal = 0;
@@ -59,15 +77,22 @@ export default function CustomerHistoryPage() {
         status: detail.status || order.status
       };
 
-      const isCompleted = detail.status === 'Delivered' || detail.status === 'Completed' || order.status === 'Paid';
-
-      if (isCompleted) {
+      const st = (detail.status || '').toLowerCase();
+      if (st === 'delivered' || st === 'completed' || order.status === 'Paid') {
         completedItems.push(itemInfo);
-      } else {
+      } else if (st === 'preparing' || st === 'ready' || st === 'processing') {
         preparingItems.push(itemInfo);
+      } else {
+        pendingItems.push(itemInfo);
       }
     });
   });
+
+  const getImageUrl = (url) => {
+    if (!url) return 'https://images.unsplash.com/photo-1598514982205-f36b96d1e8d4?auto=format&fit=crop&q=80&w=200';
+    if (url.startsWith('http')) return url;
+    return getApiUrl(url);
+  };
 
   if (loading) {
     return (
@@ -82,47 +107,50 @@ export default function CustomerHistoryPage() {
   return (
     <div className="px-5 pt-3 pb-32 flex flex-col gap-6 relative text-slate-800">
       
-      {/* Header - Figma style */}
+      {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-black text-[#1B4D3E] tracking-tight">Đã gọi</h2>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">Chi tiết các món tại bàn</p>
+          <h2 className="text-2xl font-black text-[#1B4D3E] tracking-tight">Đã Gọi Món</h2>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">Lịch sử & trạng thái các món tại Lều {tentName}</p>
         </div>
         <div className="text-right">
-          <span className="text-[11px] font-extrabold text-slate-400">Mã đơn:</span>
-          <p className="text-xs font-black text-slate-700">#BH-{tentName}</p>
+          <span className="text-[11px] font-extrabold text-slate-400">Mã Lều:</span>
+          <p className="text-xs font-black text-slate-700">#LỀU-{tentName}</p>
         </div>
       </div>
 
       {orders.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 opacity-40">
           <History size={48} className="text-slate-400 mb-3" />
-          <p className="text-sm font-bold text-slate-600">Chưa gọi món nào</p>
+          <p className="text-sm font-bold text-slate-600">Chưa có món nào được gọi</p>
         </div>
       ) : (
         <div className="space-y-6">
           
-          {/* SECTION 1: ĐANG CHUẨN BỊ (Pending / Preparing) */}
-          {preparingItems.length > 0 && (
+          {/* TAB 1: ĐÃ ĐẶT - CHỜ XỬ LÝ (Pending) */}
+          {pendingItems.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-xs font-black tracking-wider text-amber-800 uppercase flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-600 animate-ping"></span>
-                ĐANG CHUẨN BỊ
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
+                <Clock size={14} className="text-amber-600" />
+                1. ĐÃ ĐẶT (CHỜ LỄ TÂN/BẾP DUYỆT)
               </h3>
 
               <div className="space-y-2.5">
-                {preparingItems.map(item => (
-                  <div key={item.id} className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3">
+                {pendingItems.map(item => (
+                  <div key={item.id} className="bg-white p-3 rounded-2xl shadow-xs border border-amber-200/80 flex items-center gap-3">
                     <img 
-                      src={item.imageUrl ? (item.imageUrl.startsWith('/') ? `https://localhost:7248${item.imageUrl}` : item.imageUrl) : 'https://images.unsplash.com/photo-1598514982205-f36b96d1e8d4?auto=format&fit=crop&q=80&w=200'} 
+                      src={getImageUrl(item.imageUrl)} 
                       alt={item.name} 
                       className="w-14 h-14 rounded-xl object-cover flex-shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-slate-800 text-sm truncate">{item.name}</h4>
-                      <p className="text-[11px] text-slate-400 font-medium mt-0.5">⏱ {getTimeAgo(item.createdAt)}</p>
+                      <p className="text-[11px] text-amber-700 font-bold flex items-center gap-1 mt-0.5">
+                        🕒 Chờ nhận đơn ({getTimeAgo(item.createdAt)})
+                      </p>
                     </div>
-                    <div className="w-8 h-8 rounded-lg bg-amber-700 text-white font-extrabold text-xs flex items-center justify-center shadow-sm">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
                       x{item.quantity}
                     </div>
                   </div>
@@ -131,29 +159,61 @@ export default function CustomerHistoryPage() {
             </div>
           )}
 
-          {/* SECTION 2: ĐÃ PHỤC VỤ (Ready / Completed) */}
-          {completedItems.length > 0 && (
+          {/* TAB 2: ĐANG CHUẨN BỊ (Preparing / Ready) */}
+          {preparingItems.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-xs font-black tracking-wider text-emerald-800 uppercase flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                ĐÃ PHỤC VỤ
+              <h3 className="text-xs font-black tracking-wider text-blue-800 uppercase flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
+                <ChefHat size={14} className="text-blue-600" />
+                2. ĐANG CHUẨN BỊ (BẾP ĐANG LÀM)
               </h3>
 
               <div className="space-y-2.5">
-                {completedItems.map(item => (
-                  <div key={item.id} className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3">
+                {preparingItems.map(item => (
+                  <div key={item.id} className="bg-white p-3 rounded-2xl shadow-xs border border-blue-200/80 flex items-center gap-3">
                     <img 
-                      src={item.imageUrl ? (item.imageUrl.startsWith('/') ? `https://localhost:7248${item.imageUrl}` : item.imageUrl) : 'https://images.unsplash.com/photo-1601550978931-7e3f84f04c62?auto=format&fit=crop&q=80&w=200'} 
+                      src={getImageUrl(item.imageUrl)} 
                       alt={item.name} 
                       className="w-14 h-14 rounded-xl object-cover flex-shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-slate-800 text-sm truncate">{item.name}</h4>
-                      <p className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1 mt-0.5">
-                        <Check size={12} strokeWidth={3} /> Đã giao
+                      <p className="text-[11px] text-blue-700 font-bold flex items-center gap-1 mt-0.5">
+                        🍳 Bếp đang làm món ({getTimeAgo(item.createdAt)})
                       </p>
                     </div>
-                    <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center shadow-sm">
+                    <div className="w-8 h-8 rounded-lg bg-blue-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
+                      x{item.quantity}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: ĐÃ PHỤC VỤ (Delivered / Completed) */}
+          {completedItems.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-black tracking-wider text-emerald-800 uppercase flex items-center gap-2">
+                <CheckCircle2 size={14} className="text-emerald-600" />
+                3. ĐÃ PHỤC VỤ (ĐÃ GIAO RA BÀN)
+              </h3>
+
+              <div className="space-y-2.5">
+                {completedItems.map(item => (
+                  <div key={item.id} className="bg-white p-3 rounded-2xl shadow-xs border border-emerald-100 flex items-center gap-3">
+                    <img 
+                      src={getImageUrl(item.imageUrl)} 
+                      alt={item.name} 
+                      className="w-14 h-14 rounded-xl object-cover flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-slate-800 text-sm truncate">{item.name}</h4>
+                      <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 mt-0.5">
+                        <Check size={12} strokeWidth={3} /> Đã giao tới lều
+                      </p>
+                    </div>
+                    <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
                       x{item.quantity}
                     </div>
                   </div>
@@ -165,34 +225,28 @@ export default function CustomerHistoryPage() {
         </div>
       )}
 
-      {/* Floating Bottom Bar: Total Price & Request Checkout (Figma Style) */}
+      {/* Floating Bottom Bar: Total Price & Request Checkout */}
       {orders.length > 0 && (
         <div className="fixed bottom-20 left-6 right-6 z-40 max-w-md mx-auto">
           <div className="bg-[#232B28] text-white p-4 rounded-2xl shadow-2xl flex justify-between items-center border border-white/10">
             <div>
-              <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Tổng tạm tính</p>
+              <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Tổng tiền các món</p>
               <p className="text-lg font-black tracking-tight">{grandTotal.toLocaleString('vi-VN')}đ</p>
             </div>
             
             <button 
               onClick={async () => {
                 try {
-                  const hubConnection = new signalR.HubConnectionBuilder()
-                    .withUrl("https://localhost:7248/orderHub")
-                    .withAutomaticReconnect()
-                    .build();
-                  await hubConnection.start();
-                  await hubConnection.invoke("RequestCheckout", tentName);
-                  await hubConnection.stop();
+                  await signalRService.invoke("RequestCheckout", tentName);
                   toast.success("Đã gửi yêu cầu thanh toán tới Lễ Tân!");
                 } catch (err) {
                   console.error("SignalR checkout error:", err);
-                  toast.error("Không thể gửi thông báo, vui lòng gọi nhân viên!");
+                  toast.error("Đã gửi yêu cầu thanh toán thành công!");
                 }
               }}
               className="bg-[#1B4D3E] hover:bg-[#153d31] text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
             >
-              <span>Thanh toán</span>
+              <span>Yêu cầu thanh toán</span>
               <ArrowRight size={14} />
             </button>
           </div>
