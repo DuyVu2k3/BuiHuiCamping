@@ -44,7 +44,8 @@ namespace BuiHuiCamping.API.Controllers
             var activeDetails = await _context.OrderDetails
                 .Include(od => od.MenuItem)
                 .Include(od => od.Order!)
-                    .ThenInclude(o => o.Tent)
+                    .ThenInclude(o => o.Tent!)
+                        .ThenInclude(t => t.Zone)
                 .Include(od => od.Order!)
                     .ThenInclude(o => o.Booking)
                 .Where(od => od.Order != null && od.Order.Status == "Unpaid" && od.Status != "Delivered" && od.Status != "Cancelled")

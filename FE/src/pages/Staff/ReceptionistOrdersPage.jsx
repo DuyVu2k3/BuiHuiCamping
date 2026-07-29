@@ -72,22 +72,29 @@ export default function ReceptionistOrdersPage() {
   const pendingOrders = orders.filter(o => o.status === 'Pending');
   const preparingOrders = orders.filter(o => o.status === 'Preparing');
 
-  const OrderCard = ({ order, isPending }) => (
-    <div className="bg-white rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all group relative overflow-hidden">
-      <div className={`absolute top-0 left-0 w-1.5 h-full ${isPending ? 'bg-rose-500' : 'bg-amber-500'} rounded-l-3xl`}></div>
-      
-      <div className="flex justify-between items-start mb-4 pl-2">
-        <div>
-          <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-2 py-1 rounded-lg mb-2">
-            <Clock size={12} />
-            <span className="text-xs font-bold">
-              {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
-            </span>
+  const OrderCard = ({ order, isPending }) => {
+    const zoneName = order.tent?.zone?.name || "";
+    const rawTentName = order.tent?.name || "";
+    const tentNameFormatted = rawTentName.startsWith("Lều") ? rawTentName : `Lều ${rawTentName}`;
+    const fullTentTitle = zoneName ? `${zoneName} - ${tentNameFormatted}` : tentNameFormatted;
+    const customerDisplayName = order.booking?.customerName ? `Khách: ${order.booking.customerName}` : `Khách lều ${fullTentTitle}`;
+
+    return (
+      <div className="bg-white rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all group relative overflow-hidden">
+        <div className={`absolute top-0 left-0 w-1.5 h-full ${isPending ? 'bg-rose-500' : 'bg-amber-500'} rounded-l-3xl`}></div>
+        
+        <div className="flex justify-between items-start mb-4 pl-2">
+          <div>
+            <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-2 py-1 rounded-lg mb-2">
+              <Clock size={12} />
+              <span className="text-xs font-bold">
+                {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
+              </span>
+            </div>
+            <h3 className="text-xl font-black text-[#1B4D3E] tracking-tight">{fullTentTitle}</h3>
+            <p className="text-xs text-slate-500 font-bold mt-0.5">{customerDisplayName}</p>
           </div>
-          <h3 className="text-xl font-black text-slate-800 tracking-tight">{order.tent?.name}</h3>
-          <p className="text-sm text-slate-500 font-semibold">{order.booking?.customerName || "Khách"}</p>
         </div>
-      </div>
 
       <div className="flex-1 space-y-2.5 bg-slate-50/50 p-3.5 rounded-2xl mb-4 ml-2 border border-slate-100/60">
         {order.orderDetails?.map(detail => (
@@ -128,6 +135,7 @@ export default function ReceptionistOrdersPage() {
       </div>
     </div>
   );
+};
 
   return (
     <div className="p-8 max-w-7xl mx-auto h-[100dvh] flex flex-col relative">
