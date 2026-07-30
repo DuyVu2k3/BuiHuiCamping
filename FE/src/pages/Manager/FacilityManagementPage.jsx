@@ -55,18 +55,32 @@ export default function FacilityManagementPage() {
     };
   }, []);
 
-  const handleToggleStatus = (tent) => {
-    const isCurrentlyOccupied = tent.status === 'Occupied';
-    const actionText = isCurrentlyOccupied ? 'khóa QR (Trả lều)' : 'kích hoạt QR (Check-in)';
+  const isQrActive = (tent) => {
+    if (!tent) return false;
+    if (tent.isQrUnlocked || tent.IsQrUnlocked) return true;
+    if (tent.bookings && tent.bookings.length > 0) {
+      const activeBooking = tent.bookings.find(b => 
+        b.status === 'Occupied' || b.status === 'Booked' || b.status === 'Pending'
+      );
+      if (activeBooking && (activeBooking.isQrUnlocked || activeBooking.IsQrUnlocked)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const handleToggleQrLock = (tent) => {
+    const currentlyActive = isQrActive(tent);
+    const actionText = currentlyActive ? 'khóa QR (Trả lều)' : 'kích hoạt QR (Check-in)';
     
-    axios.put(getApiUrl(`/api/Tents/${tent.id}/toggle-status`))
+    axios.post(getApiUrl(`/api/Tents/${tent.id}/toggle-qr-lock`))
       .then(() => {
-        toast.success(`Đã ${actionText} cho lều ${tent.name}!`);
+        toast.success(`Đã ${actionText} cho Lều ${tent.name}!`);
         fetchData();
       })
       .catch(err => {
-        console.error("Lỗi cập nhật trạng thái:", err);
-        toast.error("Không thể thay đổi trạng thái lều");
+        console.error("Lỗi cập nhật trạng thái QR:", err);
+        toast.error("Không thể thay đổi trạng thái QR");
       });
   };
 
@@ -241,8 +255,8 @@ export default function FacilityManagementPage() {
                               {tent.price ? tent.price.toLocaleString('vi-VN') + 'đ' : '0đ'}
                             </div>
                           </div>
-                          <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${tent.status === 'Occupied' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
-                            {tent.status === 'Occupied' ? '🟢 QR KÍCH HOẠT' : '🔴 QR ĐANG KHÓA'}
+                          <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${isQrActive(tent) ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-50 text-rose-600 border border-rose-200'}`}>
+                            {isQrActive(tent) ? '🟢 QR KÍCH HOẠT' : '🔴 QR ĐANG KHÓA'}
                           </span>
                         </div>
 
@@ -262,20 +276,6 @@ export default function FacilityManagementPage() {
                             <a href={`${window.location.origin}${tent.qrCodeData}`} target="_blank" rel="noopener noreferrer" className="text-[9px] font-mono text-slate-400 break-all w-full mb-1 hover:text-emerald-500 hover:underline transition-colors block" title="Bấm vào để giả lập quét mã QR">
                               {`${window.location.origin}${tent.qrCodeData}`}
                             </a>
-
-                            {/* 
-                            <button 
-                              onClick={() => handleToggleStatus(tent)}
-                              className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${
-                                tent.status === 'Occupied' 
-                                  ? 'bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100' 
-                                  : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/20'
-                              }`}
-                            >
-                              <Power size={14} />
-                              {tent.status === 'Occupied' ? 'Trả Lều (Khóa QR)' : 'Kích Hoạt QR (Check-in)'}
-                            </button>
-                            */}
 
                             <button 
                               onClick={() => downloadQR(tent.name)}
@@ -315,8 +315,8 @@ export default function FacilityManagementPage() {
                             {tent.price ? tent.price.toLocaleString('vi-VN') + 'đ' : '0đ'}
                           </div>
                         </div>
-                        <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${tent.status === 'Occupied' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
-                          {tent.status === 'Occupied' ? '🟢 QR KÍCH HOẠT' : '🔴 QR ĐANG KHÓA'}
+                        <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${isQrActive(tent) ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-50 text-rose-600 border border-rose-200'}`}>
+                          {isQrActive(tent) ? '🟢 QR KÍCH HOẠT' : '🔴 QR ĐANG KHÓA'}
                         </span>
                       </div>
 
@@ -337,19 +337,12 @@ export default function FacilityManagementPage() {
                             {`${window.location.origin}${tent.qrCodeData}`}
                           </a>
 
-                          {/* 
                           <button 
-                            onClick={() => handleToggleStatus(tent)}
-                            className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${
-                              tent.status === 'Occupied' 
-                                ? 'bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100' 
-                                : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/20'
-                            }`}
+                            onClick={() => downloadQR(tent.name)}
+                            className="w-full py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-bold hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-all flex items-center justify-center gap-2"
                           >
-                            <Power size={14} />
-                            {tent.status === 'Occupied' ? 'Trả Lều (Khóa QR)' : 'Kích Hoạt QR (Check-in)'}
+                            <Download size={14} /> Tải mã QR
                           </button>
-                          */}
 
                           <button 
                             onClick={() => downloadQR(tent.name)}

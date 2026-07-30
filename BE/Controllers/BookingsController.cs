@@ -426,9 +426,10 @@ namespace BuiHuiCamping.API.Controllers
 
             booking.IsQrUnlocked = !booking.IsQrUnlocked;
             
-            // Sync tent physical status for Manager view
+            // Sync tent physical status & QR lock for Manager view
             foreach (var tent in booking.Tents)
             {
+                tent.IsQrUnlocked = booking.IsQrUnlocked;
                 tent.Status = booking.IsQrUnlocked ? "Occupied" : "Available";
             }
 

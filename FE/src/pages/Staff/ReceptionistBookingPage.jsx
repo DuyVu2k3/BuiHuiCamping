@@ -36,7 +36,7 @@ import { getApiUrl } from "../../apiConfig";
 import signalRService from "../../services/signalrService";
 
 const HOURS_24 = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0"));
-const MINUTES_5M = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, "0"));
+const MINUTES_5M = ["00", "15", "30", "45"];
 
 export default function ReceptionistBookingPage() {
   const [zones, setZones] = useState([]);
