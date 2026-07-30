@@ -97,18 +97,19 @@ export default function OnlineBookingPage() {
   useEffect(() => {
     fetchData(true);
 
-    // Real-time SignalR listening
-    signalRService.startConnection();
-
     const handleTentStatusChanged = () => {
-      console.log("⚡ SignalR TentStatusChanged -> Refreshing Guest map in real-time...");
+      console.log("⚡ SignalR event received -> Refreshing Guest tent map in real-time...");
       fetchData(false);
     };
 
     signalRService.on("TentStatusChanged", handleTentStatusChanged);
+    signalRService.on("BookingQrStatusChanged", handleTentStatusChanged);
+    signalRService.on("OrderUpdated", handleTentStatusChanged);
 
     return () => {
       signalRService.off("TentStatusChanged", handleTentStatusChanged);
+      signalRService.off("BookingQrStatusChanged", handleTentStatusChanged);
+      signalRService.off("OrderUpdated", handleTentStatusChanged);
     };
   }, []);
 
@@ -596,6 +597,112 @@ export default function OnlineBookingPage() {
                     placeholder="VD: 0901234567"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
                   />
+                </div>
+
+                {/* Modal Date & Time Selection Box */}
+                <div className="bg-emerald-50/70 border border-emerald-200/80 p-4 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-[#1B4D3E] uppercase tracking-wider flex items-center gap-1.5">
+                      <Calendar size={15} /> Thời gian nhận & trả lều (*)
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-white px-2.5 py-0.5 rounded-full border border-emerald-200">
+                      {nights} đêm
+                    </span>
+                  </div>
+
+                  {/* Stay Type Tabs: qua dem / trong ngay */}
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-white rounded-xl border border-emerald-200/60 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setStayType('overnight')}
+                      className={`py-1.5 rounded-lg transition-all ${stayType === 'overnight' ? 'bg-[#1B4D3E] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      ⛺ Qua đêm (14:00 - 12:00)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStayType('daytime')}
+                      className={`py-1.5 rounded-lg transition-all ${stayType === 'daytime' ? 'bg-[#1B4D3E] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      ⏱️ Trong ngày (Linh hoạt)
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-slate-600 mb-1">Ngày Check-in</label>
+                      <input 
+                        type="date" 
+                        value={checkInDate}
+                        min={today}
+                        onChange={(e) => handleCheckInChange(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-slate-600 mb-1">Ngày Check-out</label>
+                      <input 
+                        type="date" 
+                        value={checkOutDate}
+                        min={checkInDate}
+                        onChange={(e) => handleCheckOutChange(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-slate-600 mb-1">Giờ Check-in</label>
+                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
+                        <select 
+                          value={checkInTime.split(':')[0] || '14'}
+                          onChange={(e) => setCheckInTime(`${e.target.value}:${checkInTime.split(':')[1] || '00'}`)}
+                          className="w-full bg-slate-50 border-none text-xs font-extrabold text-slate-800 focus:outline-none cursor-pointer rounded-lg p-1"
+                        >
+                          {HOURS_24.map(h => (
+                            <option key={h} value={h}>{h} giờ</option>
+                          ))}
+                        </select>
+                        <span className="font-extrabold text-slate-400 text-xs">:</span>
+                        <select 
+                          value={checkInTime.split(':')[1] || '00'}
+                          onChange={(e) => setCheckInTime(`${checkInTime.split(':')[0] || '14'}:${e.target.value}`)}
+                          className="w-full bg-slate-50 border-none text-xs font-extrabold text-slate-800 focus:outline-none cursor-pointer rounded-lg p-1"
+                        >
+                          {MINUTES_5M.map(m => (
+                            <option key={m} value={m}>{m} phút</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-slate-600 mb-1">Giờ Check-out</label>
+                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
+                        <select 
+                          value={checkOutTime.split(':')[0] || '12'}
+                          onChange={(e) => setCheckOutTime(`${e.target.value}:${checkOutTime.split(':')[1] || '00'}`)}
+                          className="w-full bg-slate-50 border-none text-xs font-extrabold text-slate-800 focus:outline-none cursor-pointer rounded-lg p-1"
+                        >
+                          {HOURS_24.map(h => (
+                            <option key={h} value={h}>{h} giờ</option>
+                          ))}
+                        </select>
+                        <span className="font-extrabold text-slate-400 text-xs">:</span>
+                        <select 
+                          value={checkOutTime.split(':')[1] || '00'}
+                          onChange={(e) => setCheckOutTime(`${checkOutTime.split(':')[0] || '12'}:${e.target.value}`)}
+                          className="w-full bg-slate-50 border-none text-xs font-extrabold text-slate-800 focus:outline-none cursor-pointer rounded-lg p-1"
+                        >
+                          {MINUTES_5M.map(m => (
+                            <option key={m} value={m}>{m} phút</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Detailed Selected Tents List & Zone Info */}
