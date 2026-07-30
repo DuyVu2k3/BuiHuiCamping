@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Tent, ClipboardList, Bell, X, CheckCheck, Trash2, Info, Sparkles, Calendar, CreditCard } from 'lucide-react';
+import { Tent, ClipboardList, Bell, X, CheckCheck, Trash2, Info, Sparkles, Calendar, CreditCard, History } from 'lucide-react';
 import signalRService from '../../services/signalrService';
 import MasterBillModal from './MasterBillModal';
 
@@ -166,6 +166,16 @@ export default function ReceptionistLayout() {
           }>
             <ClipboardList size={20} />
             <span>Điều phối đơn hàng</span>
+          </NavLink>
+          <NavLink to="/receptionist/history" className={({ isActive }) => 
+            `flex items-center gap-3 px-4 py-3 rounded-2xl font-semibold transition-all duration-300 ${
+              isActive 
+                ? 'bg-[#1B4D3E] text-white shadow-md shadow-[#1B4D3E]/30' 
+                : 'text-slate-300 hover:bg-white/5 hover:text-white'
+            }`
+          }>
+            <History size={20} />
+            <span>Lịch sử Booking</span>
           </NavLink>
         </nav>
         <div className="p-4 border-t border-slate-800">

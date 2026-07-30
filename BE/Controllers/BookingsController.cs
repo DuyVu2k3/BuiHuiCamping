@@ -48,9 +48,128 @@ namespace BuiHuiCamping.API.Controllers
         {
             var bookings = await _context.Bookings
                 .Include(b => b.Tents)
-                .Include(b => b.Orders)
+                .AsNoTracking()
                 .ToListAsync();
             return Ok(bookings);
+        }
+
+        [HttpGet("history")]
+        public async Task<IActionResult> GetBookingHistory(
+            [FromQuery] int? zoneId,
+            [FromQuery] int? tentId,
+            [FromQuery] string? tentName,
+            [FromQuery] string? status,
+            [FromQuery] DateTime? fromDate,
+            [FromQuery] DateTime? toDate,
+            [FromQuery] string? search)
+        {
+            var query = _context.Bookings
+                .Include(b => b.Tents)
+                    .ThenInclude(t => t.Zone)
+                .Include(b => b.Orders)
+                    .ThenInclude(o => o.OrderDetails)
+                        .ThenInclude(od => od.MenuItem)
+                .AsQueryable();
+
+            if (zoneId.HasValue && zoneId.Value > 0)
+            {
+                query = query.Where(b => b.Tents.Any(t => t.ZoneId == zoneId.Value));
+            }
+
+            if (tentId.HasValue && tentId.Value > 0)
+            {
+                query = query.Where(b => b.Tents.Any(t => t.Id == tentId.Value));
+            }
+
+            if (!string.IsNullOrWhiteSpace(tentName))
+            {
+                query = query.Where(b => b.Tents.Any(t => t.Name.Contains(tentName)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(b => b.Status.ToLower() == status.ToLower());
+            }
+
+            if (fromDate.HasValue)
+            {
+                var start = fromDate.Value.Date;
+                query = query.Where(b => b.CheckInDate >= start || b.BookingTime >= start);
+            }
+
+            if (toDate.HasValue)
+            {
+                var end = toDate.Value.Date.AddDays(1).AddTicks(-1);
+                query = query.Where(b => b.CheckInDate <= end || b.BookingTime <= end);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var kw = search.Trim().ToLower();
+                query = query.Where(b => 
+                    b.CustomerName.ToLower().Contains(kw) || 
+                    b.PhoneNumber.ToLower().Contains(kw) ||
+                    b.Tents.Any(t => t.Name.ToLower().Contains(kw) || (t.Zone != null && t.Zone.Name.ToLower().Contains(kw)))
+                );
+            }
+
+            var rawBookings = await query
+                .OrderByDescending(b => b.BookingTime)
+                .ThenByDescending(b => b.Id)
+                .ToListAsync();
+
+            var result = rawBookings.Select(b => {
+                var tentsList = b.Tents.Select(t => {
+                    string rZone = t.Zone?.Name ?? "";
+                    string rTent = t.Name ?? "";
+                    string tFormatted = rTent.StartsWith("Lều") ? rTent : $"Lều {rTent}";
+                    string zFormatted = (!string.IsNullOrEmpty(rZone) && !rZone.StartsWith("Khu")) ? $"Khu {rZone}" : rZone;
+                    string locName = !string.IsNullOrEmpty(zFormatted) ? $"{zFormatted} - {tFormatted}" : tFormatted;
+                    return new {
+                        id = t.Id,
+                        name = rTent,
+                        zoneName = rZone,
+                        locationName = locName,
+                        price = t.Price
+                    };
+                }).ToList();
+
+                string combinedLocationName = string.Join(", ", tentsList.Select(t => t.locationName));
+                decimal tentRentalFee = b.TotalPrice > 0 ? b.TotalPrice : tentsList.Sum(t => t.price);
+                decimal depositPaid = b.DepositAmount;
+
+                var activeOrders = b.Orders.Where(o => o.Status != "Cancelled").ToList();
+                var allOrderDetails = activeOrders.SelectMany(o => o.OrderDetails).Where(od => od.Status != "Cancelled").ToList();
+
+                decimal foodAndServicesTotal = allOrderDetails.Sum(od => {
+                    var unitPrice = od.UnitPrice > 0 ? od.UnitPrice : (od.MenuItem?.Price ?? 0);
+                    return od.Quantity * unitPrice;
+                });
+
+                decimal grandTotal = tentRentalFee + foodAndServicesTotal;
+                decimal remainingBalance = Math.Max(0, grandTotal - depositPaid);
+
+                return new {
+                    id = b.Id,
+                    customerName = b.CustomerName,
+                    phoneNumber = b.PhoneNumber,
+                    status = b.Status,
+                    bookingTime = b.BookingTime,
+                    checkInDate = b.CheckInDate,
+                    checkOutDate = b.CheckOutDate,
+                    isQrUnlocked = b.IsQrUnlocked,
+                    tentsCount = tentsList.Count,
+                    tents = tentsList,
+                    locationName = combinedLocationName,
+                    tentRentalFee = tentRentalFee,
+                    foodAndServicesTotal = foodAndServicesTotal,
+                    depositPaid = depositPaid,
+                    grandTotal = grandTotal,
+                    remainingBalance = remainingBalance
+                };
+            }).ToList();
+
+            return Ok(result);
         }
 
         [HttpPost]

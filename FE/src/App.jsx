@@ -22,6 +22,8 @@ import WaiterOrdersPage from './pages/Staff/WaiterOrdersPage';
 
 import { Toaster } from 'react-hot-toast';
 
+import BookingHistoryPage from './pages/Common/BookingHistoryPage';
+
 function App() {
   return (
     <>
@@ -72,6 +74,7 @@ function App() {
             <Route path="dashboard" element={<ManagerDashboardPage />} />
             <Route path="menu" element={<MenuManagementPage />} />
             <Route path="facilities" element={<FacilityManagementPage />} />
+            <Route path="history" element={<BookingHistoryPage userRole="manager" />} />
           </Route>
 
           {/* RECEPTIONIST PORTAL */}
@@ -79,6 +82,7 @@ function App() {
             <Route path="" element={<Navigate to="booking" replace />} />
             <Route path="booking" element={<ReceptionistBookingPage />} />
             <Route path="orders" element={<ReceptionistOrdersPage />} />
+            <Route path="history" element={<BookingHistoryPage userRole="receptionist" />} />
           </Route>
 
           {/* WAITER PORTAL */}

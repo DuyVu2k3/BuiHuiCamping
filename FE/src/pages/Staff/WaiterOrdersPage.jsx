@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { CheckCircle2, Clock, Flame, Info, BellRing, X } from 'lucide-react';
+import signalRService from '../../services/signalrService';
+import { getApiUrl } from '../../apiConfig';
 
 export default function WaiterOrdersPage() {
   const [orders, setOrders] = useState([]);
@@ -12,7 +13,7 @@ export default function WaiterOrdersPage() {
 
   const fetchOrders = async () => {
     try {
-      const res = await fetch('https://localhost:7248/api/Orders');
+      const res = await fetch(getApiUrl('/api/Orders'));
       const data = await res.json();
       setOrders(data.filter(o => o.status === 'Ready'));
     } catch (err) {
@@ -25,17 +26,7 @@ export default function WaiterOrdersPage() {
   useEffect(() => {
     fetchOrders();
 
-    const connection = new HubConnectionBuilder()
-      .withUrl("https://localhost:7248/orderHub")
-      .configureLogging(LogLevel.Information)
-      .withAutomaticReconnect()
-      .build();
-
-    connection.start()
-      .then(() => console.log("Connected to OrderHub (Waiter)"))
-      .catch(err => console.error("SignalR Connection Error: ", err));
-
-    connection.on("OrderToWaiter", (notification) => {
+    const handleOrderToWaiter = (notification) => {
       setNewOrderAlert(notification);
       
       try {
@@ -49,14 +40,20 @@ export default function WaiterOrdersPage() {
       } catch (e) {}
 
       fetchOrders();
-    });
-    
-    connection.on("OrderStatusUpdated", () => {
+    };
+
+    const handleOrderUpdated = () => {
       fetchOrders();
-    });
+    };
+
+    signalRService.on("OrderToWaiter", handleOrderToWaiter);
+    signalRService.on("OrderUpdated", handleOrderUpdated);
+    signalRService.on("OrderStatusUpdated", handleOrderUpdated);
 
     return () => {
-      connection.stop();
+      signalRService.off("OrderToWaiter", handleOrderToWaiter);
+      signalRService.off("OrderUpdated", handleOrderUpdated);
+      signalRService.off("OrderStatusUpdated", handleOrderUpdated);
       if (alarmAudio.current) {
         alarmAudio.current.pause();
       }

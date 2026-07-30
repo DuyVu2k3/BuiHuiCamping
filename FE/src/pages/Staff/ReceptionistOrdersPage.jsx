@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { CheckCircle2, Clock, Flame, Info, ChefHat, BellRing, CreditCard } from 'lucide-react';
 import MasterBillModal from './MasterBillModal';
 import { getApiUrl } from '../../apiConfig';
+import signalRService from '../../services/signalrService';
 
 export default function ReceptionistOrdersPage() {
   const [orders, setOrders] = useState([]);
@@ -25,17 +25,7 @@ export default function ReceptionistOrdersPage() {
   useEffect(() => {
     fetchOrders();
 
-    const connection = new HubConnectionBuilder()
-      .withUrl("https://localhost:7248/orderHub")
-      .configureLogging(LogLevel.Information)
-      .withAutomaticReconnect()
-      .build();
-
-    connection.start()
-      .then(() => console.log("Connected to OrderHub (Receptionist)"))
-      .catch(err => console.error("SignalR Connection Error: ", err));
-
-    connection.on("ReceiveOrder", (notification) => {
+    const handleNewFoodOrder = (notification) => {
       setNewOrderAlert(notification);
       try {
         const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
@@ -44,15 +34,20 @@ export default function ReceptionistOrdersPage() {
 
       fetchOrders();
       setTimeout(() => setNewOrderAlert(null), 8000);
-    });
+    };
 
-    connection.on("OrderStatusUpdated", () => {
-      // Refresh list if other receptionists or waiters update an order
+    const handleOrderUpdated = () => {
       fetchOrders();
-    });
+    };
+
+    signalRService.on("NewFoodOrder", handleNewFoodOrder);
+    signalRService.on("OrderUpdated", handleOrderUpdated);
+    signalRService.on("OrderStatusUpdated", handleOrderUpdated);
 
     return () => {
-      connection.stop();
+      signalRService.off("NewFoodOrder", handleNewFoodOrder);
+      signalRService.off("OrderUpdated", handleOrderUpdated);
+      signalRService.off("OrderStatusUpdated", handleOrderUpdated);
     };
   }, []);
 

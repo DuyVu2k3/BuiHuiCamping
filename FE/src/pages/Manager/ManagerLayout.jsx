@@ -1,12 +1,13 @@
 import React from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Utensils, Tent, Settings, LogOut, Map, ConciergeBell } from 'lucide-react';
+import { LayoutDashboard, Utensils, Tent, Settings, LogOut, Map, ConciergeBell, History } from 'lucide-react';
 
 export default function ManagerLayout() {
   const navItems = [
     { path: '/manager/dashboard', icon: <LayoutDashboard size={20} />, label: 'Tổng quan' },
     { path: '/manager/menu', icon: <Utensils size={20} />, label: 'Quản lý Menu' },
     { path: '/manager/facilities', icon: <Map size={20} />, label: 'Khu vực & Lều' },
+    { path: '/manager/history', icon: <History size={20} />, label: 'Lịch sử Booking' },
   ];
 
   return (
