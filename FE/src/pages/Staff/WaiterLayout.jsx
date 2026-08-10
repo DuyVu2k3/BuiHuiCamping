@@ -1,24 +1,35 @@
 import React from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { ClipboardList, LifeBuoy, History, Bell, Tent } from 'lucide-react';
+import { ClipboardList, LifeBuoy, History, Bell, Tent, LogOut, MapPin } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 export default function WaiterLayout() {
+  const { user, logout } = useAuth();
+
   return (
     <div className="flex flex-col h-[100dvh] max-w-md mx-auto bg-[#F5F5F0] shadow-2xl relative overflow-hidden font-sans text-slate-800 border-x border-[#E6E2D8]">
       {/* Header */}
-      <header className="absolute top-0 left-0 right-0 z-30 px-6 py-5 bg-white/90 backdrop-blur-md shadow-sm border-b border-[#E6E2D8] flex justify-between items-center">
+      <header className="absolute top-0 left-0 right-0 z-30 px-4 py-3 bg-white/90 backdrop-blur-md shadow-sm border-b border-[#E6E2D8] flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-[#1B4D3E]/10 text-[#1B4D3E] flex items-center justify-center font-bold shadow-inner">
+          <div className="w-9 h-9 rounded-full bg-[#1B4D3E] text-white flex items-center justify-center font-bold shadow-sm">
             <Tent size={18} strokeWidth={2.5} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-[#1B4D3E] leading-none" style={{ fontFamily: "'Dancing Script', cursive" }}>Bùi Hui</h1>
-            <p className="text-[10px] font-bold text-[#1B4D3E]/80 tracking-[0.2em] uppercase mt-0.5">Waiter</p>
+            <h1 className="text-lg font-extrabold text-[#1B4D3E] leading-tight">
+              {user?.fullName || "Nhân Viên Chạy Bàn"}
+            </h1>
+            <span className="inline-flex items-center gap-1 text-[10px] font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 uppercase tracking-wider">
+              <MapPin size={10} /> Phụ trách: {user?.assignedZoneName || "Toàn khu"}
+            </span>
           </div>
         </div>
-        <button className="relative p-2 bg-[#F0E6D8] rounded-full text-[#6B4E2E]">
-          <Bell size={20} />
-          <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white"></span>
+
+        <button 
+          onClick={logout}
+          className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 hover:bg-rose-100 transition-colors flex items-center gap-1 text-xs font-bold"
+          title="Đăng xuất"
+        >
+          <LogOut size={16} />
         </button>
       </header>
 

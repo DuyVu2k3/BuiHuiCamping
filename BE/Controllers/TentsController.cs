@@ -55,6 +55,48 @@ namespace BuiHuiCamping.API.Controllers
             return Ok(tent);
         }
 
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateTent(int id, [FromBody] Tent updatedTent)
+        {
+            var tent = await _context.Tents.FindAsync(id);
+            if (tent == null) return NotFound();
+
+            tent.Name = updatedTent.Name;
+            tent.ZoneId = updatedTent.ZoneId;
+            tent.Price = updatedTent.Price;
+            tent.HourlyPriceFirstHour = updatedTent.HourlyPriceFirstHour;
+            tent.HourlyPriceExtraHour = updatedTent.HourlyPriceExtraHour;
+            if (!string.IsNullOrEmpty(updatedTent.TentType))
+            {
+                tent.TentType = updatedTent.TentType;
+            }
+
+            if (tent.ZoneId.HasValue)
+            {
+                var zone = await _context.Zones.FindAsync(tent.ZoneId.Value);
+                if (zone != null)
+                {
+                    tent.QRCodeData = $"/customer/menu?tent={zone.Name}.{tent.Name}";
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            return Ok(tent);
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteTent(int id)
+        {
+            var tent = await _context.Tents.FindAsync(id);
+            if (tent == null) return NotFound();
+
+            _context.Tents.Remove(tent);
+            await _context.SaveChangesAsync();
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            return Ok();
+        }
+
         [HttpPut("{id}/coordinates")]
         public async Task<IActionResult> UpdateCoordinates(int id, [FromBody] UpdateTentCoordinatesDto dto)
         {
@@ -86,14 +128,30 @@ namespace BuiHuiCamping.API.Controllers
                 return NotFound(new { active = false, message = "Không tìm thấy thông tin lều." });
 
             var activeBooking = tentEntity.Bookings?.FirstOrDefault(b => b.Status == "Booked" || b.Status == "Occupied" || b.Status == "Pending");
-            bool isActive = tentEntity.IsQrUnlocked || tentEntity.Status.Equals("Occupied", StringComparison.OrdinalIgnoreCase) || (activeBooking != null && activeBooking.IsQrUnlocked);
+            
+            // Check if this entity is a Restaurant Table (Bàn ăn) vs Overnight Tent (Lều)
+            bool isTable = (tentEntity.Zone != null && tentEntity.Zone.ZoneType.Equals("DiningTable", StringComparison.OrdinalIgnoreCase)) ||
+                           (tentEntity.TentType != null && (
+                            tentEntity.TentType.Equals("Bàn", StringComparison.OrdinalIgnoreCase) ||
+                            tentEntity.TentType.Equals("Tiệc", StringComparison.OrdinalIgnoreCase)
+                           )) ||
+                           (tentEntity.Zone != null && (
+                            tentEntity.Zone.Name.Contains("Bàn", StringComparison.OrdinalIgnoreCase) ||
+                            tentEntity.Zone.Name.Contains("Nhà hàng", StringComparison.OrdinalIgnoreCase) ||
+                            tentEntity.Zone.Name.Contains("Ăn uống", StringComparison.OrdinalIgnoreCase)
+                           ));
+
+            // Tables are ALWAYS active & unlocked for dining customers without needing a booking check-in!
+            bool isActive = isTable || tentEntity.IsQrUnlocked || tentEntity.Status.Equals("Occupied", StringComparison.OrdinalIgnoreCase) || (activeBooking != null && activeBooking.IsQrUnlocked);
+            bool isUnlocked = isTable || tentEntity.IsQrUnlocked || (activeBooking?.IsQrUnlocked ?? false);
 
             return Ok(new
             {
                 id = tentEntity.Id,
                 name = tentEntity.Name,
-                status = tentEntity.Status,
-                isQrUnlocked = tentEntity.IsQrUnlocked || (activeBooking?.IsQrUnlocked ?? false),
+                status = isTable ? "Table" : tentEntity.Status,
+                isTable = isTable,
+                isQrUnlocked = isUnlocked,
                 active = isActive
             });
         }

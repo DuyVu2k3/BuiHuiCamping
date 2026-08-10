@@ -6,3 +6,15 @@ export const getApiUrl = (path = '') => {
   const cleanPath = p ? (p.startsWith('/') ? p : `/${p}`) : '';
   return `${protocol}//${host}:${port}${cleanPath}`;
 };
+
+export const getImageUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('/')) {
+    return getApiUrl(url);
+  }
+  if (url.includes('/uploads/')) {
+    const uploadPath = url.substring(url.indexOf('/uploads/'));
+    return getApiUrl(uploadPath);
+  }
+  return url;
+};

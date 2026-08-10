@@ -11,6 +11,8 @@ namespace BuiHuiCamping.API.Models
         public bool IsQrUnlocked { get; set; } = false; // Per-tent QR unlock override
         public string TentType { get; set; } = "Standard"; // Ngủ nhỏ, Ngủ lớn, Tiệc
         public decimal Price { get; set; } = 0;
+        public decimal? HourlyPriceFirstHour { get; set; } = 100000;
+        public decimal? HourlyPriceExtraHour { get; set; } = 50000;
         
         public string MapTop { get; set; } = string.Empty;
         public string MapLeft { get; set; } = string.Empty;

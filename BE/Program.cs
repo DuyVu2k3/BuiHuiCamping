@@ -55,4 +55,96 @@ app.MapControllers();
 // Map SignalR Hubs
 app.MapHub<OrderHub>("/orderHub");
 
-app.Run();
+// Ensure DB columns exist on Startup
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    try
+    {
+        var sql = @"
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Users')
+        BEGIN
+            CREATE TABLE [Users] (
+                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                [Username] NVARCHAR(50) NOT NULL,
+                [PasswordHash] NVARCHAR(MAX) NOT NULL,
+                [FullName] NVARCHAR(100) NOT NULL,
+                [Role] NVARCHAR(20) NOT NULL,
+                [AssignedZoneId] INT NULL,
+                [IsActive] BIT NOT NULL DEFAULT 1
+            );
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'AssignedZoneId')
+        BEGIN
+            ALTER TABLE [Users] ADD [AssignedZoneId] INT NULL;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'ActualCheckInDate')
+        BEGIN
+            ALTER TABLE [Bookings] ADD [ActualCheckInDate] DATETIME2 NULL;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'ActualCheckOutDate')
+        BEGIN
+            ALTER TABLE [Bookings] ADD [ActualCheckOutDate] DATETIME2 NULL;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Zones') AND name = 'ZoneType')
+        BEGIN
+            ALTER TABLE [Zones] ADD [ZoneType] NVARCHAR(50) NOT NULL DEFAULT 'Camping';
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'BookingType')
+        BEGIN
+            ALTER TABLE [Bookings] ADD [BookingType] NVARCHAR(50) NOT NULL DEFAULT 'Overnight';
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'HourlyFirstHourPrice')
+        BEGIN
+            ALTER TABLE [Bookings] ADD [HourlyFirstHourPrice] DECIMAL(18,2) NOT NULL DEFAULT 100000;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'HourlyExtraHourPrice')
+        BEGIN
+            ALTER TABLE [Bookings] ADD [HourlyExtraHourPrice] DECIMAL(18,2) NOT NULL DEFAULT 50000;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'Note')
+        BEGIN
+            ALTER TABLE [Bookings] ADD [Note] NVARCHAR(MAX) NULL;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'EstimatedHours')
+        BEGIN
+            ALTER TABLE [Bookings] ADD [EstimatedHours] INT NOT NULL DEFAULT 1;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'HourlyPriceFirstHour')
+        BEGIN
+            ALTER TABLE [Tents] ADD [HourlyPriceFirstHour] DECIMAL(18,2) NOT NULL DEFAULT 100000;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'HourlyPriceExtraHour')
+        BEGIN
+            ALTER TABLE [Tents] ADD [HourlyPriceExtraHour] DECIMAL(18,2) NOT NULL DEFAULT 50000;
+        END
+
+        UPDATE [Bookings] SET [BookingType] = 'Overnight' WHERE [BookingType] IS NULL;
+        UPDATE [Bookings] SET [HourlyFirstHourPrice] = 100000 WHERE [HourlyFirstHourPrice] IS NULL;
+        UPDATE [Bookings] SET [HourlyExtraHourPrice] = 50000 WHERE [HourlyExtraHourPrice] IS NULL;
+        UPDATE [Bookings] SET [EstimatedHours] = 1 WHERE [EstimatedHours] IS NULL;
+        UPDATE [Bookings] SET [Note] = '' WHERE [Note] IS NULL;
+
+        UPDATE [Tents] SET [HourlyPriceFirstHour] = 100000 WHERE [HourlyPriceFirstHour] IS NULL;
+        UPDATE [Tents] SET [HourlyPriceExtraHour] = 50000 WHERE [HourlyPriceExtraHour] IS NULL;";
+
+        context.Database.ExecuteSqlRaw(sql);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Database auto migration warning: " + ex.Message);
+    }
+}
+
+    app.Run();

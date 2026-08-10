@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, Clock, Flame, Info, BellRing, X } from 'lucide-react';
+import { CheckCircle2, Clock, Flame, Info, BellRing, X, MapPin, User, LogOut } from 'lucide-react';
 import signalRService from '../../services/signalrService';
 import { getApiUrl } from '../../apiConfig';
+import { useAuth } from '../../context/AuthContext';
 
 export default function WaiterOrdersPage() {
+  const { user, logout } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newOrderAlert, setNewOrderAlert] = useState(null);
@@ -15,7 +17,23 @@ export default function WaiterOrdersPage() {
     try {
       const res = await fetch(getApiUrl('/api/Orders'));
       const data = await res.json();
-      setOrders(data.filter(o => o.status === 'Ready'));
+      
+      // Filter orders by assigned zone if applicable
+      let readyOrders = data.filter(o => o.status === 'Ready');
+      if (user?.assignedZoneId || user?.assignedZoneName) {
+        readyOrders = readyOrders.filter(o => {
+          if (!user.assignedZoneId && (!user.assignedZoneName || user.assignedZoneName === "Toàn bộ các khu" || user.assignedZoneName === "Tất cả các khu")) {
+            return true;
+          }
+          const idMatch = user.assignedZoneId && o.tent?.zoneId === user.assignedZoneId;
+          const nameMatch = user.assignedZoneName && o.tent?.zoneName && (
+            o.tent.zoneName.toLowerCase().includes(user.assignedZoneName.toLowerCase()) ||
+            user.assignedZoneName.toLowerCase().includes(o.tent.zoneName.toLowerCase())
+          );
+          return idMatch || nameMatch;
+        });
+      }
+      setOrders(readyOrders);
     } catch (err) {
       console.error(err);
     } finally {
@@ -24,19 +42,52 @@ export default function WaiterOrdersPage() {
   };
 
   useEffect(() => {
+    // Request Chrome Web Push Notification permission
+    if ('Notification' in window && Notification.permission !== 'granted') {
+      Notification.requestPermission();
+    }
+
     fetchOrders();
 
     const handleOrderToWaiter = (notification) => {
+      // Check zone matching before alerting
+      const isGlobalWaiter = !user?.assignedZoneId && (!user?.assignedZoneName || user.assignedZoneName === "Toàn bộ các khu" || user.assignedZoneName === "Tất cả các khu");
+      const isIdMatch = user?.assignedZoneId && notification?.zoneId && notification.zoneId === user.assignedZoneId;
+      const isNameMatch = user?.assignedZoneName && notification?.zoneName && (
+        notification.zoneName.toLowerCase().includes(user.assignedZoneName.toLowerCase()) ||
+        user.assignedZoneName.toLowerCase().includes(notification.zoneName.toLowerCase())
+      );
+
+      const isZoneMatch = isGlobalWaiter || isIdMatch || isNameMatch;
+      if (!isZoneMatch) return;
+
       setNewOrderAlert(notification);
       
+      // Channel 1: Audio Ringtone
       try {
         if (!alarmAudio.current) {
-          // Changed to a softer bell sound and lower volume
           alarmAudio.current = new Audio('https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg');
-          alarmAudio.current.volume = 0.4;
-          alarmAudio.current.loop = true; // Keep ringing until waiter acknowledges
+          alarmAudio.current.volume = 0.6;
+          alarmAudio.current.loop = true;
         }
         alarmAudio.current.play().catch(e => console.log("Audio play blocked by browser"));
+      } catch (e) {}
+
+      // Channel 2: Mobile Phone Vibration (Chrome Android)
+      try {
+        if ('vibrate' in navigator) {
+          navigator.vibrate([300, 100, 300, 100, 300]);
+        }
+      } catch (e) {}
+
+      // Channel 3: Chrome System Push Notification Banner
+      try {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification("🔔 MÓN ĂN SẴN SÀNG GIAO!", {
+            body: notification?.message || "Có đơn món mới đã làm xong từ Bếp!",
+            icon: '/favicon.ico'
+          });
+        }
       } catch (e) {}
 
       fetchOrders();
@@ -58,7 +109,7 @@ export default function WaiterOrdersPage() {
         alarmAudio.current.pause();
       }
     };
-  }, []);
+  }, [user?.assignedZoneId]);
 
   const dismissAlert = () => {
     setNewOrderAlert(null);
@@ -70,7 +121,7 @@ export default function WaiterOrdersPage() {
 
   const completeOrder = async (orderId) => {
     try {
-      const res = await fetch(`https://localhost:7248/api/Orders/${orderId}/status`, {
+      const res = await fetch(getApiUrl(`/api/Orders/${orderId}/status`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify("Completed")
@@ -81,6 +132,33 @@ export default function WaiterOrdersPage() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const getLocationFormatted = (order) => {
+    const tent = order.tent;
+    if (!tent) return "Vị Trí Chưa Xác Định";
+
+    const zoneNameRaw = tent.zoneName || tent.zone?.name || "";
+    const tentNameRaw = tent.name || "";
+
+    const isTable = (tent.zone?.zoneType === 'DiningTable') || 
+                    (tent.tentType && (tent.tentType.toLowerCase().includes('bàn') || tent.tentType.toLowerCase().includes('tiệc'))) ||
+                    zoneNameRaw.toLowerCase().includes('bàn') ||
+                    zoneNameRaw.toLowerCase().includes('ẩm thực') ||
+                    zoneNameRaw.toLowerCase().includes('nhà hàng') ||
+                    zoneNameRaw.toLowerCase().includes('ăn uống') ||
+                    tentNameRaw.toLowerCase().includes('bàn');
+
+    const zoneFormatted = zoneNameRaw ? (zoneNameRaw.startsWith("Khu") ? zoneNameRaw : `Khu ${zoneNameRaw}`) : "";
+    const icon = isTable ? "🍽️" : "⛺";
+    const entityTitle = isTable
+      ? (tentNameRaw.startsWith("Bàn") ? tentNameRaw : `Bàn ${tentNameRaw}`)
+      : (tentNameRaw.startsWith("Lều") ? tentNameRaw : `Lều ${tentNameRaw}`);
+
+    if (zoneFormatted) {
+      return { icon, text: `${zoneFormatted} • ${entityTitle}`, isTable };
+    }
+    return { icon, text: entityTitle, isTable };
   };
 
   if (loading) return <div className="p-6 text-center text-slate-500 animate-pulse">Đang đồng bộ đơn hàng...</div>;
@@ -124,60 +202,78 @@ export default function WaiterOrdersPage() {
           <div className="flex justify-between items-end mb-2 px-2">
             <div>
               <h2 className="text-xl font-black text-slate-800">Cần Giao Gấp</h2>
-              <p className="text-xs text-slate-500 font-bold">Lễ tân vừa gọi</p>
+              <p className="text-xs text-slate-500 font-bold">Bếp đã làm xong</p>
             </div>
             <span className="bg-rose-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-sm shadow-rose-500/30">
               {orders.length} Đơn
             </span>
           </div>
 
-          {orders.map(order => (
-            <div key={order.id} className="bg-white rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-100 relative overflow-hidden group active:scale-[0.98] transition-all">
-              
-              <div className="absolute top-0 left-0 w-2 h-full bg-emerald-500 rounded-l-3xl"></div>
-              
-              <div className="flex justify-between items-start mb-4 pl-2">
-                <div>
-                  <h3 className="text-3xl font-black text-slate-800 tracking-tight">{order.tent?.name}</h3>
-                  <p className="text-sm text-slate-500 font-semibold mt-1">Khách: {order.booking?.customerName}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <div className="flex items-center gap-1.5 text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
-                    <Clock size={12} />
-                    <span className="text-xs font-bold">
-                      {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
-                    </span>
-                  </div>
-                </div>
-              </div>
+          {orders.map(order => {
+            const loc = getLocationFormatted(order);
+            const customerName = order.booking?.customerName || order.customerName || "Khách tại bàn";
 
-              <div className="space-y-3 bg-slate-50/80 p-4 rounded-2xl mb-5 ml-2 border border-slate-200/50">
-                {order.orderDetails?.map(detail => (
-                  <div key={detail.id} className="flex justify-between items-center border-b border-slate-200/50 pb-3 last:border-0 last:pb-0">
-                    <div className="flex-1 pr-3">
-                      <p className="font-bold text-slate-700 text-sm leading-tight">{detail.menuItem?.name}</p>
-                      {detail.note && (
-                        <p className="text-xs text-rose-500 font-medium italic mt-1 bg-rose-50 p-1.5 rounded-lg border border-rose-100">
-                          {detail.note}
-                        </p>
-                      )}
+            return (
+              <div key={order.id} className="bg-white rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-100 relative overflow-hidden group active:scale-[0.98] transition-all">
+                
+                <div className={`absolute top-0 left-0 w-2.5 h-full ${loc.isTable ? 'bg-amber-500' : 'bg-emerald-500'} rounded-l-3xl`}></div>
+                
+                <div className="flex justify-between items-start mb-3 pl-2">
+                  <div className="space-y-1">
+                    {/* Location Badge */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xl">{loc.icon}</span>
+                      <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                        {loc.text}
+                      </h3>
                     </div>
-                    <span className="font-black text-lg text-emerald-700 bg-emerald-100/80 w-10 h-10 flex items-center justify-center rounded-xl shadow-sm border border-emerald-200/50">
-                      x{detail.quantity}
-                    </span>
-                  </div>
-                ))}
-              </div>
 
-              <button 
-                onClick={() => completeOrder(order.id)}
-                className="w-full ml-2 py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-lg rounded-2xl shadow-xl shadow-slate-900/30 transition-all flex justify-center items-center gap-2"
-              >
-                <CheckCircle2 size={24} />
-                Đã Giao Xong
-              </button>
-            </div>
-          ))}
+                    {/* Customer Name */}
+                    <div className="flex items-center gap-1.5 text-slate-600 font-bold text-sm pt-0.5">
+                      <User size={15} className="text-emerald-600" />
+                      <span>Khách: <strong className="text-slate-800 font-black">{customerName}</strong></span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-1 text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
+                      <Clock size={13} />
+                      <span className="text-xs font-bold">
+                        {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items List */}
+                <div className="space-y-3 bg-slate-50/90 p-4 rounded-2xl mb-4 ml-2 border border-slate-200/60">
+                  {order.orderDetails?.map(detail => (
+                    <div key={detail.id} className="flex justify-between items-center border-b border-slate-200/50 pb-3 last:border-0 last:pb-0">
+                      <div className="flex-1 pr-3">
+                        <p className="font-bold text-slate-800 text-sm leading-tight">{detail.menuItem?.name}</p>
+                        {detail.note && (
+                          <p className="text-xs text-rose-500 font-medium italic mt-1 bg-rose-50 p-1.5 rounded-lg border border-rose-100">
+                            {detail.note}
+                          </p>
+                        )}
+                      </div>
+                      <span className="font-black text-lg text-emerald-800 bg-emerald-100/90 w-10 h-10 flex items-center justify-center rounded-xl shadow-sm border border-emerald-200">
+                        x{detail.quantity}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <button 
+                  onClick={() => completeOrder(order.id)}
+                  className="w-full ml-2 py-4 bg-[#1B4D3E] hover:bg-[#153d31] text-white font-black text-lg rounded-2xl shadow-xl shadow-[#1B4D3E]/20 transition-all flex justify-center items-center gap-2 active:scale-95"
+                >
+                  <CheckCircle2 size={22} />
+                  Xác Nhận Đã Giao Xong
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

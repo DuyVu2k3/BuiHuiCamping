@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { X, Printer, CheckCircle2, Tent, User, Phone, Calendar, CreditCard, ShoppingBag, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { X, Printer, CheckCircle2, Tent, User, Phone, Calendar, CreditCard, ShoppingBag, Loader2, Sparkles, AlertCircle, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getApiUrl } from '../../apiConfig';
 
@@ -108,7 +108,7 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
               </div>
 
               {/* Customer Info Card */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 space-y-2.5 text-xs">
                 <div className="flex justify-between items-center text-slate-700">
                   <span className="font-semibold text-slate-500 flex items-center gap-1.5">
                     <User size={14} className="text-[#1B4D3E]" /> Khách đại diện:
@@ -123,16 +123,49 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                   <span className="font-bold text-slate-800">{billData.phoneNumber || "N/A"}</span>
                 </div>
 
-                {billData.checkInDate && (
+                {/* Scheduled Check-in / Check-out */}
+                <div className="pt-2 border-t border-slate-100 space-y-1.5">
                   <div className="flex justify-between items-center text-slate-700">
                     <span className="font-semibold text-slate-500 flex items-center gap-1.5">
-                      <Calendar size={14} className="text-[#1B4D3E]" /> Giờ Check-in:
+                      <Calendar size={14} className="text-emerald-600" /> Lịch Check-in đăng ký:
                     </span>
-                    <span className="font-bold text-slate-800">
-                      {new Date(billData.checkInDate.endsWith('Z') ? billData.checkInDate : billData.checkInDate + 'Z').toLocaleString('vi-VN')}
+                    <span className="font-extrabold text-slate-800">
+                      {billData.checkInDate ? new Date(billData.checkInDate.endsWith('Z') ? billData.checkInDate : billData.checkInDate + 'Z').toLocaleString('vi-VN') : 'N/A'}
                     </span>
                   </div>
-                )}
+
+                  {billData.checkOutDate && (
+                    <div className="flex justify-between items-center text-slate-700">
+                      <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                        <Calendar size={14} className="text-emerald-600" /> Lịch Check-out đăng ký:
+                      </span>
+                      <span className="font-extrabold text-slate-800">
+                        {new Date(billData.checkOutDate.endsWith('Z') ? billData.checkOutDate : billData.checkOutDate + 'Z').toLocaleString('vi-VN')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actual Check-in / Check-out */}
+                <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                  <div className="flex justify-between items-center text-slate-700">
+                    <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                      <Clock size={14} className="text-[#1B4D3E]" /> Thực tế nhận lều:
+                    </span>
+                    <span className="font-extrabold text-[#1B4D3E]">
+                      {billData.actualCheckInDate ? new Date(billData.actualCheckInDate.endsWith('Z') ? billData.actualCheckInDate : billData.actualCheckInDate + 'Z').toLocaleString('vi-VN') : "Đã nhận khi Check-in"}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-slate-700">
+                    <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                      <Clock size={14} className="text-rose-600" /> Thực tế trả lều:
+                    </span>
+                    <span className="font-extrabold text-rose-700">
+                      {billData.actualCheckOutDate ? new Date(billData.actualCheckOutDate.endsWith('Z') ? billData.actualCheckOutDate : billData.actualCheckOutDate + 'Z').toLocaleString('vi-VN') : (billData.status === 'CheckedOut' ? 'Đã trả lều' : 'Đang sử dụng / Chưa trả')}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* Itemized Table Breakdown */}

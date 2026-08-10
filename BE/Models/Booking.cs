@@ -21,10 +21,18 @@ namespace BuiHuiCamping.API.Models
         
         public DateTime? CheckInDate { get; set; }
         public DateTime? CheckOutDate { get; set; }
+        public DateTime? ActualCheckInDate { get; set; }
+        public DateTime? ActualCheckOutDate { get; set; }
         public decimal TotalPrice { get; set; } = 0; // Total tent rental price for this booking
         public decimal DepositAmount { get; set; } = 0;
         public string DepositStatus { get; set; } = "Pending"; // Pending, Paid
         public bool IsQrUnlocked { get; set; } = false; // Receptionist manual override for QR access
+        
+        public string? BookingType { get; set; } = "Overnight"; // Overnight or Hourly
+        public decimal? HourlyFirstHourPrice { get; set; } = 100000;
+        public decimal? HourlyExtraHourPrice { get; set; } = 50000;
+        public int? EstimatedHours { get; set; } = 1;
+        public string? Note { get; set; } = string.Empty;
         
         // Tents associated with this booking
         public ICollection<Tent> Tents { get; set; } = new List<Tent>();

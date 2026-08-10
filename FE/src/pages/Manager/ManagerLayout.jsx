@@ -1,8 +1,11 @@
 import React from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Utensils, Tent, Settings, LogOut, Map, ConciergeBell, History } from 'lucide-react';
+import { LayoutDashboard, Utensils, Tent, Settings, LogOut, Map, ConciergeBell, History, User } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 export default function ManagerLayout() {
+  const { user, logout } = useAuth();
+
   const navItems = [
     { path: '/manager/dashboard', icon: <LayoutDashboard size={20} />, label: 'Tổng quan' },
     { path: '/manager/menu', icon: <Utensils size={20} />, label: 'Quản lý Menu' },
@@ -44,7 +47,10 @@ export default function ManagerLayout() {
         </nav>
 
         <div className="p-4 border-t border-slate-800">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-rose-400 font-semibold hover:bg-rose-500/10 transition-colors">
+          <button 
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-rose-400 font-semibold hover:bg-rose-500/10 transition-colors"
+          >
             <LogOut size={20} />
             Đăng xuất
           </button>
@@ -57,8 +63,9 @@ export default function ManagerLayout() {
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-extrabold text-[#1B4D3E]">Cổng Quản Lý Bùi Hui</h2>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#1B4D3E]/10 flex items-center justify-center text-[#1B4D3E] font-bold">
-                AD
+              <div className="px-3.5 py-1.5 bg-emerald-50 text-[#1B4D3E] font-extrabold text-xs rounded-xl border border-emerald-200 flex items-center gap-2">
+                <User size={15} />
+                <span>{user?.fullName || "Bùi Văn Quản Lý"}</span>
               </div>
             </div>
           </div>

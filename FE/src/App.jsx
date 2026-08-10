@@ -19,14 +19,18 @@ import ReceptionistOrdersPage from './pages/Staff/ReceptionistOrdersPage';
 
 import WaiterLayout from './pages/Staff/WaiterLayout';
 import WaiterOrdersPage from './pages/Staff/WaiterOrdersPage';
+import KitchenKdsPage from './pages/Staff/KitchenKdsPage';
 
 import { Toaster } from 'react-hot-toast';
 
 import BookingHistoryPage from './pages/Common/BookingHistoryPage';
+import LoginPage from './pages/Auth/LoginPage';
+import ProtectedRoute from './components/ProtectedRoute';
+import { AuthProvider } from './context/AuthContext';
 
 function App() {
   return (
-    <>
+    <AuthProvider>
       <Toaster 
         position="top-center"
         toastOptions={{
@@ -53,6 +57,9 @@ function App() {
           {/* Default route redirects to Guest Intro Landing Page */}
           <Route path="/" element={<Navigate to="/guest/intro" replace />} />
 
+          {/* LOGIN PAGE */}
+          <Route path="/login" element={<LoginPage />} />
+
           {/* GUEST PORTAL (Khách xem web ở nhà - Full-width Desktop/Mobile) */}
           <Route path="/guest" element={<GuestLayout />}>
             <Route path="" element={<Navigate to="intro" replace />} />
@@ -68,31 +75,43 @@ function App() {
             <Route path="history" element={<CustomerHistoryPage />} />
           </Route>
 
-          {/* MANAGER PORTAL */}
-          <Route path="/manager" element={<ManagerLayout />}>
-            <Route path="" element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<ManagerDashboardPage />} />
-            <Route path="menu" element={<MenuManagementPage />} />
-            <Route path="facilities" element={<FacilityManagementPage />} />
-            <Route path="history" element={<BookingHistoryPage userRole="manager" />} />
+          {/* PROTECTED MANAGER PORTAL */}
+          <Route element={<ProtectedRoute allowedRoles={['Manager']} />}>
+            <Route path="/manager" element={<ManagerLayout />}>
+              <Route path="" element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<ManagerDashboardPage />} />
+              <Route path="menu" element={<MenuManagementPage />} />
+              <Route path="facilities" element={<FacilityManagementPage />} />
+              <Route path="history" element={<BookingHistoryPage userRole="manager" />} />
+            </Route>
           </Route>
 
-          {/* RECEPTIONIST PORTAL */}
-          <Route path="/receptionist" element={<ReceptionistLayout />}>
-            <Route path="" element={<Navigate to="booking" replace />} />
-            <Route path="booking" element={<ReceptionistBookingPage />} />
-            <Route path="orders" element={<ReceptionistOrdersPage />} />
-            <Route path="history" element={<BookingHistoryPage userRole="receptionist" />} />
+          {/* PROTECTED RECEPTIONIST PORTAL */}
+          <Route element={<ProtectedRoute allowedRoles={['Receptionist', 'Manager']} />}>
+            <Route path="/receptionist" element={<ReceptionistLayout />}>
+              <Route path="" element={<Navigate to="booking" replace />} />
+              <Route path="booking" element={<ReceptionistBookingPage />} />
+              <Route path="orders" element={<ReceptionistOrdersPage />} />
+              <Route path="history" element={<BookingHistoryPage userRole="receptionist" />} />
+            </Route>
           </Route>
 
-          {/* WAITER PORTAL */}
-          <Route path="/waiter" element={<WaiterLayout />}>
-            <Route path="" element={<Navigate to="orders" replace />} />
-            <Route path="orders" element={<WaiterOrdersPage />} />
+          {/* PROTECTED WAITER PORTAL */}
+          <Route element={<ProtectedRoute allowedRoles={['Waiter']} />}>
+            <Route path="/waiter" element={<WaiterLayout />}>
+              <Route path="" element={<Navigate to="orders" replace />} />
+              <Route path="orders" element={<WaiterOrdersPage />} />
+            </Route>
+          </Route>
+
+          {/* PROTECTED KITCHEN PORTAL (KDS Màn Hình Tivi Bếp) */}
+          <Route element={<ProtectedRoute allowedRoles={['Kitchen', 'Manager', 'Receptionist']} />}>
+            <Route path="/kitchen" element={<Navigate to="/kitchen/orders" replace />} />
+            <Route path="/kitchen/orders" element={<KitchenKdsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
-    </>
+    </AuthProvider>
   );
 }
 

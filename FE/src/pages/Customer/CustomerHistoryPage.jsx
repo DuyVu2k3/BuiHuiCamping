@@ -90,7 +90,8 @@ export default function CustomerHistoryPage() {
 
   const getImageUrl = (url) => {
     if (!url) return 'https://images.unsplash.com/photo-1598514982205-f36b96d1e8d4?auto=format&fit=crop&q=80&w=200';
-    if (url.startsWith('http')) return url;
+    if (url.includes('/uploads/')) return getApiUrl(url.substring(url.indexOf('/uploads/')));
+    if (url.startsWith('http') && !url.includes('localhost')) return url;
     return getApiUrl(url);
   };
 
@@ -111,7 +112,7 @@ export default function CustomerHistoryPage() {
       <div className="flex justify-between items-start">
         <div>
           <h2 className="text-2xl font-black text-[#1B4D3E] tracking-tight">Đã Gọi Món</h2>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">Lịch sử & trạng thái các món tại Lều {tentName}</p>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">Lịch sử & trạng thái các món tại {tentName}</p>
         </div>
         <div className="text-right">
           <span className="text-[11px] font-extrabold text-slate-400">Mã Lều:</span>

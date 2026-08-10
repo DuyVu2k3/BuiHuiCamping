@@ -5,3 +5,17 @@ staff letan: http://localhost:5173/receptionist
 staff: http://localhost:5173/waiter
 
 customer: http://localhost:5173/customer
+
+
+Tên Đăng Nhập	Mật Khẩu	Họ Và Tên		Vai Trò (Role)		Khu Vực Phụ Trách
+manager		123456		Bùi Văn Quản Lý		Quản Lý (Manager)	Toàn Bộ Hệ Thống
+reception	123456		Nguyễn Thị Lễ Tân	Lễ Tân (Receptionist)	Quản Lý Sơ Đồ & Đơn Hàng
+waiter_a	123456		Trần Văn Chạy Bàn	Chạy Bàn (Waiter)	Chuyên Khu A 📍
+waiter_b	123456		Lê Thị Chạy Bàn		Chạy Bàn (Waiter)	Chuyên Khu B 📍
+waiter_all	123456		Phạm Văn Chạy Bàn	Chạy Bàn (Waiter)	Toàn Bộ Các Khu 📍
+
+
+- Bạn chỉ cần thực hiện 2 bước đơn giản để đổi ip chạy trên các máy:
+
+Mở Terminal gõ ipconfig để xem IP mới của Laptop (dòng IPv4 Address).
+Lấy IP mới đó mở trên điện thoại: 👉 http://<IP_MỚI_CỦA_LAPTOP>:5173/login

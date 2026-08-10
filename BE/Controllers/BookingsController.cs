@@ -12,6 +12,15 @@ namespace BuiHuiCamping.API.Controllers
         public string CustomerName { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
         public List<int> TentIds { get; set; } = new List<int>();
+        public DateTime? CheckInDate { get; set; }
+        public DateTime? CheckOutDate { get; set; }
+        public decimal DepositAmount { get; set; } = 0;
+        public string Note { get; set; } = string.Empty;
+
+        public string BookingType { get; set; } = "Overnight"; // Overnight or Hourly
+        public decimal HourlyFirstHourPrice { get; set; } = 100000;
+        public decimal HourlyExtraHourPrice { get; set; } = 50000;
+        public int EstimatedHours { get; set; } = 1;
     }
 
     public class OnlineBookingDto
@@ -60,63 +69,35 @@ namespace BuiHuiCamping.API.Controllers
             [FromQuery] string? tentName,
             [FromQuery] string? status,
             [FromQuery] DateTime? fromDate,
-            [FromQuery] DateTime? toDate,
-            [FromQuery] string? search)
+            [FromQuery] DateTime? toDate)
         {
             var query = _context.Bookings
                 .Include(b => b.Tents)
-                    .ThenInclude(t => t.Zone)
+                .ThenInclude(t => t.Zone)
                 .Include(b => b.Orders)
-                    .ThenInclude(o => o.OrderDetails)
-                        .ThenInclude(od => od.MenuItem)
+                .ThenInclude(o => o.OrderDetails)
+                .ThenInclude(od => od.MenuItem)
                 .AsQueryable();
 
-            if (zoneId.HasValue && zoneId.Value > 0)
-            {
+            if (zoneId.HasValue)
                 query = query.Where(b => b.Tents.Any(t => t.ZoneId == zoneId.Value));
-            }
 
-            if (tentId.HasValue && tentId.Value > 0)
-            {
+            if (tentId.HasValue)
                 query = query.Where(b => b.Tents.Any(t => t.Id == tentId.Value));
-            }
 
-            if (!string.IsNullOrWhiteSpace(tentName))
-            {
+            if (!string.IsNullOrEmpty(tentName))
                 query = query.Where(b => b.Tents.Any(t => t.Name.Contains(tentName)));
-            }
 
-            if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(b => b.Status.ToLower() == status.ToLower());
-            }
+            if (!string.IsNullOrEmpty(status) && status != "All")
+                query = query.Where(b => b.Status == status);
 
             if (fromDate.HasValue)
-            {
-                var start = fromDate.Value.Date;
-                query = query.Where(b => b.CheckInDate >= start || b.BookingTime >= start);
-            }
+                query = query.Where(b => b.BookingTime >= fromDate.Value);
 
             if (toDate.HasValue)
-            {
-                var end = toDate.Value.Date.AddDays(1).AddTicks(-1);
-                query = query.Where(b => b.CheckInDate <= end || b.BookingTime <= end);
-            }
+                query = query.Where(b => b.BookingTime <= toDate.Value.AddDays(1));
 
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var kw = search.Trim().ToLower();
-                query = query.Where(b => 
-                    b.CustomerName.ToLower().Contains(kw) || 
-                    b.PhoneNumber.ToLower().Contains(kw) ||
-                    b.Tents.Any(t => t.Name.ToLower().Contains(kw) || (t.Zone != null && t.Zone.Name.ToLower().Contains(kw)))
-                );
-            }
-
-            var rawBookings = await query
-                .OrderByDescending(b => b.BookingTime)
-                .ThenByDescending(b => b.Id)
-                .ToListAsync();
+            var rawBookings = await query.OrderByDescending(b => b.BookingTime).ToListAsync();
 
             var result = rawBookings.Select(b => {
                 var tentsList = b.Tents.Select(t => {
@@ -135,7 +116,31 @@ namespace BuiHuiCamping.API.Controllers
                 }).ToList();
 
                 string combinedLocationName = string.Join(", ", tentsList.Select(t => t.locationName));
-                decimal tentRentalFee = b.TotalPrice > 0 ? b.TotalPrice : tentsList.Sum(t => t.price);
+                decimal tentRentalFee = 0;
+
+                if (b.BookingType != null && b.BookingType.Equals("Hourly", StringComparison.OrdinalIgnoreCase))
+                {
+                    var startTime = b.ActualCheckInDate ?? b.CheckInDate ?? b.BookingTime;
+                    var endTime = b.ActualCheckOutDate ?? DateTime.Now;
+                    var duration = endTime - startTime;
+
+                    double totalHours = duration.TotalHours;
+                    int roundedHours = Math.Max(1, (int)Math.Ceiling(totalHours));
+
+                    foreach (var tent in b.Tents)
+                    {
+                        decimal fPrice = tent.HourlyPriceFirstHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceFirstHour.Value : (b.HourlyFirstHourPrice.GetValueOrDefault(0) > 0 ? b.HourlyFirstHourPrice.Value : 100000);
+                        decimal ePrice = tent.HourlyPriceExtraHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceExtraHour.Value : (b.HourlyExtraHourPrice.GetValueOrDefault(0) > 0 ? b.HourlyExtraHourPrice.Value : 50000);
+
+                        decimal tentFee = fPrice + (roundedHours > 1 ? (roundedHours - 1) * ePrice : 0);
+                        tentRentalFee += tentFee;
+                    }
+                }
+                else
+                {
+                    tentRentalFee = b.TotalPrice > 0 ? b.TotalPrice : tentsList.Sum(t => t.price);
+                }
+
                 decimal depositPaid = b.DepositAmount;
 
                 var activeOrders = b.Orders.Where(o => o.Status != "Cancelled").ToList();
@@ -175,10 +180,20 @@ namespace BuiHuiCamping.API.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateBooking([FromBody] CreateBookingDto dto)
         {
+            var isHourly = dto.BookingType.Equals("Hourly", StringComparison.OrdinalIgnoreCase);
+
             var booking = new Booking
             {
                 CustomerName = dto.CustomerName,
                 PhoneNumber = dto.PhoneNumber,
+                CheckInDate = dto.CheckInDate ?? DateTime.Now,
+                CheckOutDate = isHourly ? null : dto.CheckOutDate,
+                DepositAmount = dto.DepositAmount,
+                BookingType = isHourly ? "Hourly" : "Overnight",
+                HourlyFirstHourPrice = dto.HourlyFirstHourPrice > 0 ? dto.HourlyFirstHourPrice : 100000,
+                HourlyExtraHourPrice = dto.HourlyExtraHourPrice > 0 ? dto.HourlyExtraHourPrice : 50000,
+                EstimatedHours = dto.EstimatedHours > 0 ? dto.EstimatedHours : 1,
+                Note = dto.Note ?? string.Empty,
                 Status = "Booked"
             };
             
@@ -189,7 +204,20 @@ namespace BuiHuiCamping.API.Controllers
                 tent.Status = "Booked"; 
             }
 
-            booking.TotalPrice = tents.Sum(t => t.Price);
+            if (isHourly)
+            {
+                decimal totalHourlyPrice = 0;
+                foreach (var tent in tents)
+                {
+                    decimal firstHour = tent.HourlyPriceFirstHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceFirstHour.Value : (dto.HourlyFirstHourPrice > 0 ? dto.HourlyFirstHourPrice : 100000);
+                    totalHourlyPrice += firstHour;
+                }
+                booking.TotalPrice = totalHourlyPrice;
+            }
+            else
+            {
+                booking.TotalPrice = tents.Sum(t => t.Price);
+            }
             
             _context.Bookings.Add(booking);
             await _context.SaveChangesAsync();
@@ -420,6 +448,9 @@ namespace BuiHuiCamping.API.Controllers
                 phoneNumber = booking.PhoneNumber,
                 status = booking.Status,
                 checkInDate = booking.CheckInDate,
+                checkOutDate = booking.CheckOutDate,
+                actualCheckInDate = booking.ActualCheckInDate,
+                actualCheckOutDate = booking.ActualCheckOutDate,
                 tentsCount = tentsList.Count,
                 tents = tentsList,
                 locationName = combinedLocationName,
@@ -450,20 +481,85 @@ namespace BuiHuiCamping.API.Controllers
                             .ThenInclude(od => od.MenuItem)
                 .ToListAsync();
 
-            Tent? tent = null;
+            Tent? targetTent = null;
+
             if (tentId.HasValue && tentId.Value > 0)
             {
-                tent = allTents.FirstOrDefault(t => t.Id == tentId.Value);
+                targetTent = allTents.FirstOrDefault(t => t.Id == tentId.Value);
             }
-            if (tent == null && !string.IsNullOrEmpty(tentName))
+            
+            if (targetTent == null && !string.IsNullOrWhiteSpace(tentName))
             {
-                tent = OrdersController.FindMatchingTent(allTents, tentName);
+                targetTent = OrdersController.FindMatchingTent(allTents, tentName);
             }
 
-            if (tent == null) return NotFound("Không tìm thấy Lều.");
+            if (targetTent == null)
+            {
+                return NotFound(new { message = "Không tìm thấy thông tin Lều / Bàn ăn." });
+            }
 
-            var activeBooking = tent.Bookings?.FirstOrDefault(b => b.Status == "Occupied" || b.Status == "Booked" || b.Status == "Pending");
-            if (activeBooking == null) return NotFound("Lều hiện chưa có thông tin đặt lều.");
+            var activeBooking = targetTent.Bookings
+                .Where(b => b.Status != "Cancelled" && b.Status != "CheckedOut")
+                .OrderByDescending(b => b.BookingTime)
+                .FirstOrDefault();
+
+            if (activeBooking == null)
+            {
+                // Check if there are active unpaid orders for this Tent/Table directly
+                var activeTableOrders = await _context.Orders
+                    .Include(o => o.OrderDetails)
+                        .ThenInclude(od => od.MenuItem)
+                    .Where(o => o.TentId == targetTent.Id && o.Status != "Cancelled" && o.Status != "Paid")
+                    .ToListAsync();
+
+                if (activeTableOrders.Any())
+                {
+                    string rZone = targetTent.Zone?.Name ?? "";
+                    string rTent = targetTent.Name ?? "";
+                    string tFormatted = rTent.StartsWith("Bàn") || rTent.StartsWith("Lều") ? rTent : $"Bàn {rTent}";
+                    string zFormatted = (!string.IsNullOrEmpty(rZone) && !rZone.StartsWith("Khu")) ? $"Khu {rZone}" : rZone;
+                    string locName = !string.IsNullOrEmpty(zFormatted) ? $"{zFormatted} - {tFormatted}" : tFormatted;
+
+                    var allDetails = activeTableOrders.SelectMany(o => o.OrderDetails).Where(od => od.Status != "Cancelled").ToList();
+                    var itemSummaries = allDetails
+                        .GroupBy(od => od.MenuItemId)
+                        .Select(g => {
+                            var first = g.First();
+                            var quantity = g.Sum(od => od.Quantity);
+                            var unitPrice = first.UnitPrice > 0 ? first.UnitPrice : (first.MenuItem?.Price ?? 0);
+                            return new {
+                                menuItemId = first.MenuItemId,
+                                name = first.MenuItem?.Name ?? "Món ăn/Dịch vụ",
+                                quantity = quantity,
+                                unitPrice = unitPrice,
+                                totalPrice = quantity * unitPrice
+                            };
+                        }).ToList();
+
+                    decimal foodAndServicesTotal = itemSummaries.Sum(i => i.totalPrice);
+
+                    return Ok(new {
+                        bookingId = (int?)null,
+                        customerName = "Khách Ăn Tại Bàn",
+                        phoneNumber = "",
+                        status = "Occupied",
+                        checkInDate = DateTime.Now,
+                        checkOutDate = (DateTime?)null,
+                        tentsCount = 1,
+                        tents = new[] { new { id = targetTent.Id, name = targetTent.Name, zoneName = rZone, locationName = locName, price = targetTent.Price } },
+                        locationName = locName,
+                        tent = new { id = targetTent.Id, name = targetTent.Name, zoneName = rZone, locationName = locName, price = targetTent.Price },
+                        tentRentalFee = targetTent.Price,
+                        depositPaid = 0m,
+                        foodAndServices = itemSummaries,
+                        foodAndServicesTotal = foodAndServicesTotal,
+                        grandTotal = targetTent.Price + foodAndServicesTotal,
+                        remainingBalance = targetTent.Price + foodAndServicesTotal
+                    });
+                }
+
+                return NotFound(new { message = $"Lều/Bàn {targetTent.Name} hiện không có hóa đơn cần thanh toán." });
+            }
 
             return await GetMasterBill(activeBooking.Id);
         }
@@ -480,6 +576,7 @@ namespace BuiHuiCamping.API.Controllers
 
             booking.Status = "CheckedOut";
             booking.IsQrUnlocked = false; // Lock QR upon checkout
+            booking.ActualCheckOutDate = DateTime.Now;
 
             foreach (var tent in booking.Tents)
             {
@@ -511,7 +608,10 @@ namespace BuiHuiCamping.API.Controllers
             if (booking == null) return NotFound();
 
             booking.Status = "Occupied";
-            // IsQrUnlocked is strictly controlled 100% manually by Receptionist
+            if (!booking.ActualCheckInDate.HasValue)
+            {
+                booking.ActualCheckInDate = DateTime.Now;
+            }
 
             foreach(var tent in booking.Tents)
             {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { getApiUrl, getImageUrl } from "../../apiConfig";
 import { Plus, Edit, Trash2, Image as ImageIcon } from "lucide-react";
 import toast from 'react-hot-toast';
 
@@ -156,11 +157,7 @@ export default function MenuManagementPage() {
                       <div className="w-24 h-24 rounded-2xl bg-slate-100 overflow-hidden flex-shrink-0 relative">
                         {item.imageUrl ? (
                           <img
-                            src={
-                              item.imageUrl.startsWith("/")
-                                ? `https://localhost:7248${item.imageUrl}`
-                                : item.imageUrl
-                            }
+                            src={getImageUrl(item.imageUrl)}
                             alt={item.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           />

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useOutletContext } from 'react-router-dom';
 import { ShoppingCart, Plus, Minus, X, Flame, Wine, Sparkles, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getApiUrl } from '../../apiConfig';
+import { getApiUrl, getImageUrl } from '../../apiConfig';
 
 export default function MenuPage() {
   const [menu, setMenu] = useState([]);
@@ -55,7 +55,7 @@ export default function MenuPage() {
       const orderPayload = {
         tentId: activeTentId ? activeTentId : undefined,
         tentName: tentName,
-        customerName: `Khách lều ${tentName}`,
+        customerName: `Khách ${tentName}`,
         items: cart.map(c => ({
           menuItemId: c.menuItemId,
           quantity: c.quantity,
@@ -142,7 +142,7 @@ export default function MenuPage() {
               return (
                 <div key={item.id} className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 flex gap-3.5 items-center">
                   <img 
-                    src={item.imageUrl ? (item.imageUrl.startsWith('/') ? `https://localhost:7248${item.imageUrl}` : item.imageUrl) : 'https://images.unsplash.com/photo-1598514982205-f36b96d1e8d4?auto=format&fit=crop&q=80&w=300'} 
+                    src={item.imageUrl ? getImageUrl(item.imageUrl) : 'https://images.unsplash.com/photo-1598514982205-f36b96d1e8d4?auto=format&fit=crop&q=80&w=300'} 
                     alt={item.name} 
                     className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
                   />
@@ -185,7 +185,7 @@ export default function MenuPage() {
                 <div key={item.id} className="bg-white p-2.5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
                   <div>
                     <img 
-                      src={item.imageUrl ? (item.imageUrl.startsWith('/') ? `https://localhost:7248${item.imageUrl}` : item.imageUrl) : 'https://images.unsplash.com/photo-1601550978931-7e3f84f04c62?auto=format&fit=crop&q=80&w=300'} 
+                      src={item.imageUrl ? getImageUrl(item.imageUrl) : 'https://images.unsplash.com/photo-1601550978931-7e3f84f04c62?auto=format&fit=crop&q=80&w=300'} 
                       alt={item.name} 
                       className="w-full h-24 rounded-xl object-cover mb-2"
                     />
@@ -225,7 +225,7 @@ export default function MenuPage() {
               return (
                 <div key={item.id} className="bg-[#FAF7F2] p-3 rounded-2xl shadow-sm border border-amber-100 flex gap-3.5 items-center">
                   <img 
-                    src={item.imageUrl ? (item.imageUrl.startsWith('/') ? `https://localhost:7248${item.imageUrl}` : item.imageUrl) : 'https://images.unsplash.com/photo-1522204523234-8729aa6e3d5f?auto=format&fit=crop&q=80&w=300'} 
+                    src={item.imageUrl ? getImageUrl(item.imageUrl) : 'https://images.unsplash.com/photo-1522204523234-8729aa6e3d5f?auto=format&fit=crop&q=80&w=300'} 
                     alt={item.name} 
                     className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
                   />

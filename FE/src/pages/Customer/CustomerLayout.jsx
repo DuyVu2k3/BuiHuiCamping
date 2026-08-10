@@ -118,9 +118,8 @@ export default function CustomerLayout() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Table / Tent Pill */}
+          {/* Table / Location Pill */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F0E6D8] text-[#6B4E2E] text-xs font-bold shadow-sm border border-[#E6D4BE]">
-            <span>Lều</span>
             <span className="text-sm font-black">{tentName}</span>
           </div>
         </div>

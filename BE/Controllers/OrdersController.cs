@@ -75,6 +75,7 @@ namespace BuiHuiCamping.API.Controllers
                         tent = new {
                             id = tentObj?.Id,
                             name = tentObj?.Name,
+                            zoneId = tentObj?.ZoneId,
                             zoneName = tentObj?.Zone?.Name ?? "",
                             status = tentObj?.Status
                         },
@@ -178,9 +179,14 @@ namespace BuiHuiCamping.API.Controllers
             var activeBooking = tent.Bookings.FirstOrDefault(b => b.Status == "Booked" || b.Status == "Occupied" || b.Status == "Pending");
             if (activeBooking == null)
             {
+                bool isTableEntity = (tent.TentType != null && (tent.TentType.Equals("Bàn", StringComparison.OrdinalIgnoreCase) || tent.TentType.Equals("Tiệc", StringComparison.OrdinalIgnoreCase))) ||
+                                     (tent.Zone != null && (tent.Zone.Name.Contains("Bàn", StringComparison.OrdinalIgnoreCase) || tent.Zone.Name.Contains("Nhà hàng", StringComparison.OrdinalIgnoreCase)));
+
+                string defaultName = isTableEntity ? $"Khách Bàn {tent.Name}" : $"Khách Lều {tent.Name}";
+
                 activeBooking = new Booking
                 {
-                    CustomerName = !string.IsNullOrEmpty(dto.CustomerName) ? dto.CustomerName : $"Khách Lều {tent.Name}",
+                    CustomerName = !string.IsNullOrEmpty(dto.CustomerName) ? dto.CustomerName : defaultName,
                     PhoneNumber = !string.IsNullOrEmpty(dto.PhoneNumber) ? dto.PhoneNumber : "0000000000",
                     Status = "Occupied",
                     CheckInDate = DateTime.UtcNow,
@@ -189,7 +195,7 @@ namespace BuiHuiCamping.API.Controllers
                 };
                 _context.Bookings.Add(activeBooking);
                 activeBooking.Tents.Add(tent);
-                tent.Status = "Occupied";
+                tent.Status = isTableEntity ? "Available" : "Occupied";
                 await _context.SaveChangesAsync();
             }
 
@@ -313,6 +319,8 @@ namespace BuiHuiCamping.API.Controllers
 
             var first = details.First();
             var tentName = first.Order?.Tent?.Name ?? "";
+            var zoneId = first.Order?.Tent?.ZoneId;
+            var zoneName = first.Order?.Tent?.Zone?.Name ?? "";
             var customerName = first.Order?.Booking?.CustomerName ?? "";
 
             if (status == "Preparing")
@@ -325,7 +333,9 @@ namespace BuiHuiCamping.API.Controllers
                     OrderId = batchId,
                     TentName = tentName,
                     CustomerName = customerName,
-                    Message = $"Có món tại lều {tentName} cần giao!"
+                    ZoneId = zoneId,
+                    ZoneName = zoneName,
+                    Message = $"Có món tại lều {tentName} ({zoneName}) cần giao!"
                 });
                 await _hubContext.Clients.All.SendAsync("OrderStatusUpdated", batchId, status);
             }

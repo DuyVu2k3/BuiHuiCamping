@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Tent, ClipboardList, Bell, X, CheckCheck, Trash2, Info, Sparkles, Calendar, CreditCard, History } from 'lucide-react';
+import { Tent, ClipboardList, Bell, X, CheckCheck, Trash2, Info, Sparkles, Calendar, CreditCard, History, LogOut, ChefHat } from 'lucide-react';
 import signalRService from '../../services/signalrService';
 import MasterBillModal from './MasterBillModal';
+import { useAuth } from '../../context/AuthContext';
 
 export default function ReceptionistLayout() {
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [selectedBillTent, setSelectedBillTent] = useState(null);
   const [notifications, setNotifications] = useState([
@@ -20,10 +22,40 @@ export default function ReceptionistLayout() {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const dropdownRef = useRef(null);
 
+  // Web Audio API Synthesizer Chime for Receptionist Alerts (C5 -> E5 -> G5)
+  const playReceptionistChime = () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      
+      const nowTime = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, nowTime); // C5
+      osc.frequency.setValueAtTime(659.25, nowTime + 0.12); // E5
+      osc.frequency.setValueAtTime(783.99, nowTime + 0.24); // G5
+      
+      gain.gain.setValueAtTime(0.35, nowTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, nowTime + 0.6);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start(nowTime);
+      osc.stop(nowTime + 0.6);
+    } catch (e) {
+      console.log("Audio play blocked", e);
+    }
+  };
+
   useEffect(() => {
     signalRService.startConnection();
 
     const handleNewBookingRequest = (data) => {
+      playReceptionistChime();
       const customer = data?.customerName || data?.CustomerName || 'Khách hàng';
       const phone = data?.phoneNumber || data?.PhoneNumber || '';
       const tents = data?.tentsList || data?.TentsList || 'Lều';
@@ -52,6 +84,7 @@ export default function ReceptionistLayout() {
     };
 
     const handleCheckoutRequested = (tentName) => {
+      playReceptionistChime();
       const newNotif = {
         id: Date.now(),
         title: "💳 YÊU CẦU TRẢ LỀU & THANH TOÁN",
@@ -66,6 +99,7 @@ export default function ReceptionistLayout() {
     };
 
     const handleNewFoodOrder = (data) => {
+      playReceptionistChime();
       const tent = data?.tentName || data?.TentName || "Lều";
       const customer = data?.customerName || data?.CustomerName || "Khách";
       const summary = data?.itemsSummary || data?.Message || "Đã gọi đồ ăn/uống";
@@ -177,14 +211,27 @@ export default function ReceptionistLayout() {
             <History size={20} />
             <span>Lịch sử Booking</span>
           </NavLink>
+          <NavLink to="/kitchen/orders" target="_blank" className="flex items-center gap-3 px-4 py-3 rounded-2xl font-semibold text-amber-300 hover:bg-white/10 transition-all">
+            <ChefHat size={20} />
+            <span>Màn hình Bếp (KDS)</span>
+          </NavLink>
         </nav>
-        <div className="p-4 border-t border-slate-800">
-          <div className="flex items-center gap-3 px-4 py-2">
-            <div className="w-8 h-8 rounded-full bg-[#1B4D3E] text-white flex items-center justify-center font-bold text-sm">L</div>
-            <div>
-              <p className="text-sm font-semibold text-white">Lễ Tân Bùi Hui</p>
-              <p className="text-xs text-emerald-400 font-bold">🟢 Đang trực</p>
+        <div className="p-4 border-t border-slate-800 space-y-2">
+          <div className="flex items-center justify-between px-2 py-1">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-[#1B4D3E] text-white flex items-center justify-center font-bold text-sm">L</div>
+              <div>
+                <p className="text-xs font-bold text-white">{user?.fullName || "Nguyễn Thị Lễ Tân"}</p>
+                <p className="text-[10px] text-emerald-400 font-bold">🟢 Đang trực</p>
+              </div>
             </div>
+            <button
+              onClick={logout}
+              className="p-2 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-colors"
+              title="Đăng xuất"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </div>
       </aside>

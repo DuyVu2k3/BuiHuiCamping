@@ -22,16 +22,37 @@ export default function ReceptionistOrdersPage() {
     }
   };
 
+  const playSoundChime = () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(880, ctx.currentTime);
+      osc1.frequency.exponentialRampToValueAtTime(1046.5, ctx.currentTime + 0.15);
+      
+      gain1.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+      
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      
+      osc1.start(ctx.currentTime);
+      osc1.stop(ctx.currentTime + 0.5);
+    } catch (e) {
+      console.log("Audio play blocked", e);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
 
     const handleNewFoodOrder = (notification) => {
       setNewOrderAlert(notification);
-      try {
-        const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
-        audio.play().catch(e => console.log("Audio play blocked"));
-      } catch (e) {}
-
+      playSoundChime();
       fetchOrders();
       setTimeout(() => setNewOrderAlert(null), 8000);
     };
@@ -53,7 +74,7 @@ export default function ReceptionistOrdersPage() {
 
   const updateStatus = async (orderId, newStatus) => {
     try {
-      const res = await fetch(`https://localhost:7248/api/Orders/${orderId}/status`, {
+      const res = await fetch(getApiUrl(`/api/Orders/${orderId}/status`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newStatus)
@@ -73,10 +94,23 @@ export default function ReceptionistOrdersPage() {
   const OrderCard = ({ order, isPending }) => {
     const rawZone = order.tent?.zoneName || order.tent?.zone?.name || "";
     const rawTentName = order.tent?.name || "";
-    const tentNameFormatted = rawTentName.startsWith("Lều") ? rawTentName : `Lều ${rawTentName}`;
+
+    const zoneLower = rawZone.toLowerCase();
+    const nameLower = rawTentName.toLowerCase();
+    const isTable = zoneLower.includes("bàn") || zoneLower.includes("ẩm thực") || zoneLower.includes("nhà hàng") || zoneLower.includes("ăn uống") || nameLower.includes("bàn");
+
+    let tentNameFormatted = rawTentName;
+    if (isTable) {
+      if (!nameLower.startsWith("bàn")) {
+        tentNameFormatted = `Bàn ${rawTentName}`;
+      }
+    } else {
+      if (!nameLower.startsWith("lều")) {
+        tentNameFormatted = `Lều ${rawTentName}`;
+      }
+    }
+
     const zoneFormatted = (rawZone && !rawZone.startsWith("Khu")) ? `Khu ${rawZone}` : rawZone;
-    
-    // Location string (e.g. "Khu B - Lều 1")
     const tentLocation = zoneFormatted ? `${zoneFormatted} - ${tentNameFormatted}` : tentNameFormatted;
     
     let customerName = order.booking?.customerName || "Khách hàng";
@@ -84,17 +118,38 @@ export default function ReceptionistOrdersPage() {
       customerName = "Khách hàng";
     }
 
+    // Helper: Check if order requires Kitchen preparation (Food / Drink vs Services)
+    const hasKitchenItems = (order.orderDetails || []).some(detail => {
+      const cat = (detail.menuItem?.category || "").toLowerCase();
+      if (cat === 'food' || cat === 'drink' || cat === 'đồ ăn' || cat === 'đồ uống') return true;
+      if (cat === 'service' || cat === 'dịch vụ') return false;
+      const name = (detail.menuItem?.name || "").toLowerCase();
+      if (name.includes("bếp than") || name.includes("dịch vụ") || name.includes("thuê") || name.includes("lều") || name.includes("lửa trại")) return false;
+      return true;
+    });
+
     return (
       <div className="bg-white rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all group relative overflow-hidden">
         <div className={`absolute top-0 left-0 w-1.5 h-full ${isPending ? 'bg-rose-500' : 'bg-amber-500'} rounded-l-3xl`}></div>
         
         <div className="flex justify-between items-start mb-3 pl-2">
           <div>
-            <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-2 py-1 rounded-lg mb-1.5">
-              <Clock size={12} />
-              <span className="text-xs font-bold">
-                {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
-              </span>
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-2 py-1 rounded-lg">
+                <Clock size={12} />
+                <span className="text-xs font-bold">
+                  {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
+                </span>
+              </div>
+              {hasKitchenItems ? (
+                <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-md">
+                  🍖 Đồ Ăn / Uống
+                </span>
+              ) : (
+                <span className="bg-sky-100 text-sky-900 border border-sky-300 text-[10px] font-black px-2 py-0.5 rounded-md">
+                  ✨ Dịch Vụ (Không Qua Bếp)
+                </span>
+              )}
             </div>
             {/* Line 1: Customer Representative Name */}
             <h3 className="text-base font-black text-[#1B4D3E] tracking-tight">Khách: {customerName}</h3>
@@ -124,21 +179,33 @@ export default function ReceptionistOrdersPage() {
       </div>
 
       <div className="ml-2 mt-auto">
-        {isPending ? (
-          <button 
-            onClick={() => updateStatus(order.id, 'Preparing')}
-            className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-lg shadow-slate-900/20 transition-all active:scale-95 flex justify-center items-center gap-2"
-          >
-            <ChefHat size={18} />
-            Đã Báo Bếp
-          </button>
+        {hasKitchenItems ? (
+          /* Orders with Food/Drink require sending to Kitchen first */
+          isPending ? (
+            <button 
+              onClick={() => updateStatus(order.id, 'Preparing')}
+              className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-lg shadow-slate-900/20 transition-all active:scale-95 flex justify-center items-center gap-2"
+            >
+              <ChefHat size={18} />
+              Đã Báo Bếp
+            </button>
+          ) : (
+            <button 
+              onClick={() => updateStatus(order.id, 'Ready')}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-lg shadow-emerald-600/20 transition-all active:scale-95 flex justify-center items-center gap-2"
+            >
+              <BellRing size={18} className="animate-wiggle" />
+              Gọi Chạy Bàn / Ra Món
+            </button>
+          )
         ) : (
+          /* Service-only Orders (e.g. Bếp Than, Thuê Lều) skip Kitchen and directly call Waiter */
           <button 
             onClick={() => updateStatus(order.id, 'Ready')}
-            className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-500/20 transition-all active:scale-95 flex justify-center items-center gap-2"
+            className="w-full py-3 bg-sky-700 hover:bg-sky-800 text-white font-bold rounded-2xl shadow-lg shadow-sky-700/20 transition-all active:scale-95 flex justify-center items-center gap-2"
           >
-            <BellRing size={18} className="animate-wiggle" />
-            Gọi Chạy Bàn
+            <BellRing size={18} />
+            Gọi Chạy Bàn (Giao Dịch Vụ)
           </button>
         )}
       </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Minus, Plus, Info, CheckCircle2, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { getApiUrl, getImageUrl } from '../../apiConfig';
 
 export default function CartPage() {
   const { cart, setCart, tentName } = useOutletContext();
@@ -69,7 +70,7 @@ export default function CartPage() {
           <CheckCircle2 size={48} strokeWidth={2.5} />
         </div>
         <h2 className="text-2xl font-black text-slate-800 mb-2">Đặt món thành công!</h2>
-        <p className="text-slate-500 mb-8 px-4 leading-relaxed">Nhà bếp đã nhận được yêu cầu của bạn. Đồ ăn sẽ được mang ra lều <b>{tentName}</b> trong ít phút nữa.</p>
+        <p className="text-slate-500 mb-8 px-4 leading-relaxed">Nhà bếp đã nhận được yêu cầu của bạn. Đồ ăn sẽ được mang tới <b>{tentName}</b> trong ít phút nữa.</p>
         <button 
           onClick={() => { setSuccess(false); navigate('/customer/menu'); }}
           className="bg-slate-900 text-white font-bold py-4 px-8 rounded-2xl shadow-lg shadow-slate-900/30 transition-all active:scale-95 flex items-center gap-2"
@@ -108,7 +109,7 @@ export default function CartPage() {
         {cart.map(item => (
           <div key={item.menuItemId} className="bg-white p-3 rounded-3xl shadow-[0_4px_16px_rgb(0,0,0,0.03)] flex gap-4 border border-slate-100/50">
             <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 flex-shrink-0 shadow-sm border border-slate-200/50">
-              <img src={item.itemData.imageUrl.startsWith('/') ? `https://localhost:7248${item.itemData.imageUrl}` : item.itemData.imageUrl} className="w-full h-full object-cover" />
+              <img src={getImageUrl(item.itemData.imageUrl)} className="w-full h-full object-cover" />
             </div>
             <div className="flex-1 flex flex-col justify-between py-1">
               <div>

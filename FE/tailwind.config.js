@@ -7,14 +7,15 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Outfit', 'sans-serif'],
-        "headline-md": ["Manrope"],
-        "label-caps": ["JetBrains Mono"],
-        "headline-lg": ["Manrope"],
-        "body-lg": ["Manrope"],
-        "headline-sm": ["Manrope"],
-        "headline-lg-mobile": ["Manrope"],
-        "body-md": ["Manrope"]
+        sans: ['Be Vietnam Pro', 'Plus Jakarta Sans', 'sans-serif'],
+        heading: ['Plus Jakarta Sans', 'Be Vietnam Pro', 'sans-serif'],
+        body: ['Be Vietnam Pro', 'sans-serif'],
+        "headline-md": ["Plus Jakarta Sans", "sans-serif"],
+        "headline-lg": ["Plus Jakarta Sans", "sans-serif"],
+        "body-lg": ["Be Vietnam Pro", "sans-serif"],
+        "headline-sm": ["Plus Jakarta Sans", "sans-serif"],
+        "headline-lg-mobile": ["Plus Jakarta Sans", "sans-serif"],
+        "body-md": ["Be Vietnam Pro", "sans-serif"]
       },
       colors: {
         "surface-dim": "#d9dadb",

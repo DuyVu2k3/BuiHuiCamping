@@ -29,13 +29,16 @@ import {
   Unlock,
   CreditCard,
   Receipt,
+  Calendar,
 } from "lucide-react";
 import MasterBillModal from "./MasterBillModal";
 import toast from "react-hot-toast";
 import { getApiUrl } from "../../apiConfig";
 import signalRService from "../../services/signalrService";
 
-const HOURS_24 = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0"));
+const HOURS_24 = Array.from({ length: 24 }, (_, i) =>
+  i.toString().padStart(2, "0"),
+);
 const MINUTES_5M = ["00", "15", "30", "45"];
 
 export default function ReceptionistBookingPage() {
@@ -45,6 +48,16 @@ export default function ReceptionistBookingPage() {
   const [bookingForm, setBookingForm] = useState({
     customerName: "",
     phoneNumber: "",
+    depositAmount: "",
+    note: "",
+    bookingType: "Hourly", // "Hourly" or "Overnight"
+    hourlyFirstHourPrice: "100000",
+    hourlyExtraHourPrice: "50000",
+    estimatedHours: "1",
+    checkInDate: "",
+    checkOutDate: "",
+    checkInTime: "14:00",
+    checkOutTime: "12:00",
   });
   const [loading, setLoading] = useState(true);
 
@@ -108,17 +121,8 @@ export default function ReceptionistBookingPage() {
       const tents = data?.tentsList || data?.TentsList || "lều";
 
       toast.success(
-        `🔔 YÊU CẦU ĐẶT LỀU MỚI!\nKhách: ${customer} (${phone})\nKhu & Lều: ${tents}`,
-        {
-          duration: 12000,
-          style: {
-            borderRadius: "16px",
-            background: "#1B4D3E",
-            color: "#fff",
-            fontWeight: "bold",
-            fontSize: "13px",
-          },
-        },
+        `🔔 CÓ ĐƠN ĐẶT LỀU MỚI!\nKhách: ${customer} (${phone})\nLều chọn: ${tents}`,
+        { duration: 8000 },
       );
       fetchZones();
     };
@@ -136,11 +140,36 @@ export default function ReceptionistBookingPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (selectedTents.length > 0) {
+      const targetTent = selectedTents[selectedTents.length - 1];
+      const fHp =
+        targetTent.hourlyPriceFirstHour ||
+        targetTent.HourlyPriceFirstHour ||
+        100000;
+      const eHp =
+        targetTent.hourlyPriceExtraHour ||
+        targetTent.HourlyPriceExtraHour ||
+        50000;
+      setBookingForm((prev) => ({
+        ...prev,
+        hourlyFirstHourPrice: fHp.toString(),
+        hourlyExtraHourPrice: eHp.toString(),
+      }));
+    }
+  }, [selectedTents]);
+
   const submitBooking = async () => {
     if (!bookingForm.customerName || !bookingForm.phoneNumber)
-      return toast.error("Vui lòng nhập tên và SĐT");
+      return toast.error("Vui lòng nhập Tên và Số Điện Thoại của khách!");
 
     try {
+      const inStr = `${bookingForm.checkInDate || filterCheckIn}T${bookingForm.checkInTime || "14:00"}:00`;
+      const outStr =
+        bookingForm.bookingType === "Hourly"
+          ? null
+          : `${bookingForm.checkOutDate || filterCheckOut}T${bookingForm.checkOutTime || "12:00"}:00`;
+
       const res = await fetch(getApiUrl("/api/Bookings"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -148,13 +177,40 @@ export default function ReceptionistBookingPage() {
           customerName: bookingForm.customerName,
           phoneNumber: bookingForm.phoneNumber,
           tentIds: selectedTents.map((t) => t.id),
+          bookingType: bookingForm.bookingType,
+          checkInDate: inStr,
+          checkOutDate: outStr,
+          depositAmount: parseFloat(bookingForm.depositAmount) || 0,
+          hourlyFirstHourPrice:
+            parseFloat(bookingForm.hourlyFirstHourPrice) || 100000,
+          hourlyExtraHourPrice:
+            parseFloat(bookingForm.hourlyExtraHourPrice) || 50000,
+          estimatedHours: parseInt(bookingForm.estimatedHours) || 1,
+          note: bookingForm.note || "",
         }),
       });
 
       if (res.ok) {
-        toast.success("Booking thành công!");
+        toast.success(
+          bookingForm.bookingType === "Hourly"
+            ? "Tạo đơn thuê lều theo giờ thành công!"
+            : "Tạo đơn đặt lều qua đêm thành công!",
+        );
         setSelectedTents([]);
-        setBookingForm({ customerName: "", phoneNumber: "" });
+        setBookingForm({
+          customerName: "",
+          phoneNumber: "",
+          depositAmount: "",
+          note: "",
+          bookingType: "Hourly",
+          hourlyFirstHourPrice: "100000",
+          hourlyExtraHourPrice: "50000",
+          estimatedHours: "1",
+          checkInDate: "",
+          checkOutDate: "",
+          checkInTime: "14:00",
+          checkOutTime: "12:00",
+        });
         fetchZones();
       }
     } catch (err) {
@@ -245,8 +301,9 @@ export default function ReceptionistBookingPage() {
         toast.success(res.data.message || "Đã cập nhật trạng thái QR lều!");
         const newUnlockedState = res.data.isQrUnlocked;
         if (activeActionBooking && activeActionBooking.bookingTents) {
-          const updatedBookingTents = activeActionBooking.bookingTents.map((t) =>
-            t.id === tentId ? { ...t, isQrUnlocked: newUnlockedState } : t
+          const updatedBookingTents = activeActionBooking.bookingTents.map(
+            (t) =>
+              t.id === tentId ? { ...t, isQrUnlocked: newUnlockedState } : t,
           );
           setActiveActionBooking({
             ...activeActionBooking,
@@ -322,16 +379,26 @@ export default function ReceptionistBookingPage() {
 
         // Legacy fallback: If DB row stored midnight 00:00:00, normalize to standard resort hours (14:00 & 12:00)
         if (bIn.getHours() === 0 && bIn.getMinutes() === 0) {
-          const datePart = typeof b.checkInDate === "string" ? b.checkInDate.split("T")[0] : bIn.toISOString().split("T")[0];
+          const datePart =
+            typeof b.checkInDate === "string"
+              ? b.checkInDate.split("T")[0]
+              : bIn.toISOString().split("T")[0];
           bIn = new Date(`${datePart}T14:00:00`);
         }
         if (bOut.getHours() === 0 && bOut.getMinutes() === 0) {
-          const datePart = typeof b.checkOutDate === "string" ? b.checkOutDate.split("T")[0] : bOut.toISOString().split("T")[0];
+          const datePart =
+            typeof b.checkOutDate === "string"
+              ? b.checkOutDate.split("T")[0]
+              : bOut.toISOString().split("T")[0];
           bOut = new Date(`${datePart}T12:00:00`);
         }
 
-        const targetIn = new Date(`${filterCheckIn}T${filterCheckInTime || "14:00"}:00`);
-        const targetOut = new Date(`${filterCheckOut}T${filterCheckOutTime || "12:00"}:00`);
+        const targetIn = new Date(
+          `${filterCheckIn}T${filterCheckInTime || "14:00"}:00`,
+        );
+        const targetOut = new Date(
+          `${filterCheckOut}T${filterCheckOutTime || "12:00"}:00`,
+        );
 
         // Overlap condition: bIn < targetOut && bOut > targetIn
         return bIn < targetOut && bOut > targetIn;
@@ -358,10 +425,29 @@ export default function ReceptionistBookingPage() {
 
     if (tent.status === "Available" && !activeBooking) {
       setActiveActionBooking(null);
+      let updatedSelected = [];
       if (selectedTents.find((t) => t.id === tent.id)) {
-        setSelectedTents(selectedTents.filter((t) => t.id !== tent.id));
+        updatedSelected = selectedTents.filter((t) => t.id !== tent.id);
       } else {
-        setSelectedTents([...selectedTents, tent]);
+        updatedSelected = [...selectedTents, tent];
+      }
+      setSelectedTents(updatedSelected);
+
+      if (updatedSelected.length > 0) {
+        const lastTent = updatedSelected[updatedSelected.length - 1];
+        setBookingForm((prev) => ({
+          ...prev,
+          hourlyFirstHourPrice: (
+            lastTent.hourlyPriceFirstHour ||
+            lastTent.HourlyPriceFirstHour ||
+            100000
+          ).toString(),
+          hourlyExtraHourPrice: (
+            lastTent.hourlyPriceExtraHour ||
+            lastTent.HourlyPriceExtraHour ||
+            50000
+          ).toString(),
+        }));
       }
     } else {
       setSelectedTents([]);
@@ -432,7 +518,9 @@ export default function ReceptionistBookingPage() {
   const handleFilterCheckInChange = (val) => {
     setFilterCheckIn(val);
     if (filterCheckOut && val > filterCheckOut) {
-      const nextDay = new Date(new Date(val).getTime() + 86400000).toISOString().split('T')[0];
+      const nextDay = new Date(new Date(val).getTime() + 86400000)
+        .toISOString()
+        .split("T")[0];
       setFilterCheckOut(nextDay);
     }
   };
@@ -503,7 +591,9 @@ export default function ReceptionistBookingPage() {
           </div>
           <div
             onClick={() =>
-              setStatusFilter(statusFilter === "Available" ? "All" : "Available")
+              setStatusFilter(
+                statusFilter === "Available" ? "All" : "Available",
+              )
             }
             className={`cursor-pointer flex items-center gap-2 px-3.5 py-2 rounded-full border text-xs font-bold transition-all ${
               statusFilter === "Available"
@@ -561,26 +651,40 @@ export default function ReceptionistBookingPage() {
           <div className="inline-flex items-center gap-0.5 bg-white border border-slate-200 rounded-xl px-1.5 py-1 shrink-0">
             <select
               value={filterCheckInTime.split(":")[0] || "14"}
-              onChange={(e) => setFilterCheckInTime(`${e.target.value}:${filterCheckInTime.split(":")[1] || "00"}`)}
+              onChange={(e) =>
+                setFilterCheckInTime(
+                  `${e.target.value}:${filterCheckInTime.split(":")[1] || "00"}`,
+                )
+              }
               className="bg-transparent focus:outline-none text-emerald-900 font-extrabold cursor-pointer text-xs"
             >
               {HOURS_24.map((h) => (
-                <option key={h} value={h}>{h}h</option>
+                <option key={h} value={h}>
+                  {h}h
+                </option>
               ))}
             </select>
             <span className="font-extrabold text-slate-400 text-xs">:</span>
             <select
               value={filterCheckInTime.split(":")[1] || "00"}
-              onChange={(e) => setFilterCheckInTime(`${filterCheckInTime.split(":")[0] || "14"}:${e.target.value}`)}
+              onChange={(e) =>
+                setFilterCheckInTime(
+                  `${filterCheckInTime.split(":")[0] || "14"}:${e.target.value}`,
+                )
+              }
               className="bg-transparent focus:outline-none text-emerald-900 font-extrabold cursor-pointer text-xs"
             >
               {MINUTES_5M.map((m) => (
-                <option key={m} value={m}>{m}p</option>
+                <option key={m} value={m}>
+                  {m}p
+                </option>
               ))}
             </select>
           </div>
 
-          <span className="mx-1 text-slate-400 font-extrabold shrink-0">&rarr;</span>
+          <span className="mx-1 text-slate-400 font-extrabold shrink-0">
+            &rarr;
+          </span>
           <span className="shrink-0">Trả:</span>
           <input
             type="date"
@@ -594,21 +698,33 @@ export default function ReceptionistBookingPage() {
           <div className="inline-flex items-center gap-0.5 bg-white border border-slate-200 rounded-xl px-1.5 py-1 shrink-0">
             <select
               value={filterCheckOutTime.split(":")[0] || "12"}
-              onChange={(e) => setFilterCheckOutTime(`${e.target.value}:${filterCheckOutTime.split(":")[1] || "00"}`)}
+              onChange={(e) =>
+                setFilterCheckOutTime(
+                  `${e.target.value}:${filterCheckOutTime.split(":")[1] || "00"}`,
+                )
+              }
               className="bg-transparent focus:outline-none text-emerald-900 font-extrabold cursor-pointer text-xs"
             >
               {HOURS_24.map((h) => (
-                <option key={h} value={h}>{h}h</option>
+                <option key={h} value={h}>
+                  {h}h
+                </option>
               ))}
             </select>
             <span className="font-extrabold text-slate-400 text-xs">:</span>
             <select
               value={filterCheckOutTime.split(":")[1] || "00"}
-              onChange={(e) => setFilterCheckOutTime(`${filterCheckOutTime.split(":")[0] || "12"}:${e.target.value}`)}
+              onChange={(e) =>
+                setFilterCheckOutTime(
+                  `${filterCheckOutTime.split(":")[0] || "12"}:${e.target.value}`,
+                )
+              }
               className="bg-transparent focus:outline-none text-emerald-900 font-extrabold cursor-pointer text-xs"
             >
               {MINUTES_5M.map((m) => (
-                <option key={m} value={m}>{m}p</option>
+                <option key={m} value={m}>
+                  {m}p
+                </option>
               ))}
             </select>
           </div>
@@ -805,80 +921,450 @@ export default function ReceptionistBookingPage() {
         {/* Scrollable Body Content */}
         <div className="flex-1 overflow-y-auto space-y-5 pr-2 custom-scrollbar pb-6">
           {/* New Manual Booking Form */}
-          {selectedTents.length > 0 && !activeActionBooking && (
-            <section className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-on-surface flex items-center gap-2">
-                  <User size={16} className="text-primary" /> Tên Khách Đại Diện
-                </label>
-                <input
-                  type="text"
-                  value={bookingForm.customerName}
-                  onChange={(e) =>
-                    setBookingForm({
-                      ...bookingForm,
-                      customerName: e.target.value,
-                    })
-                  }
-                  className="w-full px-4 py-3 bg-surface-container-low border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 text-on-surface font-medium transition-all"
-                  placeholder="Nhập tên khách hàng"
-                />
-              </div>
+          {selectedTents.length > 0 &&
+            !activeActionBooking &&
+            (() => {
+              const isHourly = bookingForm.bookingType === "Hourly";
+              const currentCheckIn = bookingForm.checkInDate || filterCheckIn;
+              const currentCheckOut =
+                bookingForm.checkOutDate || filterCheckOut;
+              const currentInTime = bookingForm.checkInTime || "14:00";
+              const currentOutTime = bookingForm.checkOutTime || "12:00";
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-on-surface flex items-center gap-2">
-                  <Phone size={16} className="text-primary" /> Số Điện Thoại
-                </label>
-                <input
-                  type="tel"
-                  value={bookingForm.phoneNumber}
-                  onChange={(e) =>
-                    setBookingForm({
-                      ...bookingForm,
-                      phoneNumber: e.target.value,
-                    })
-                  }
-                  className="w-full px-4 py-3 bg-surface-container-low border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 text-on-surface font-medium transition-all"
-                  placeholder="Nhập số điện thoại"
-                />
-              </div>
+              let totalTentPrice = 0;
+              let diffNights = 1;
 
-              <section>
-                <div className="flex items-center gap-2 mb-4">
-                  <Home size={18} className="text-primary" />
-                  <h4 className="font-headline-sm text-sm uppercase tracking-widest text-on-surface-variant font-bold">
-                    Lều Đang Chọn
-                  </h4>
-                </div>
-                <div className="space-y-3">
-                  {selectedTents.map((tent) => (
-                    <div
-                      key={tent.id}
-                      className="flex justify-between items-center py-2 border-b border-outline-variant/10 last:border-0"
-                    >
-                      <span className="text-on-surface font-medium">
-                        Lều {tent.name}
-                      </span>
+              const firstHpDisplay =
+                selectedTents.length > 0
+                  ? selectedTents[0].hourlyPriceFirstHour ||
+                    selectedTents[0].HourlyPriceFirstHour ||
+                    100000
+                  : 100000;
+              const extraHpDisplay =
+                selectedTents.length > 0
+                  ? selectedTents[0].hourlyPriceExtraHour ||
+                    selectedTents[0].HourlyPriceExtraHour ||
+                    50000
+                  : 50000;
+              const overnightPriceDisplay = selectedTents.reduce(
+                (sum, t) => sum + (t.price || 0),
+                0,
+              );
+
+              if (isHourly) {
+                const hoursEst = parseInt(bookingForm.estimatedHours) || 1;
+                totalTentPrice = selectedTents.reduce((sum, t) => {
+                  const fHp =
+                    t.hourlyPriceFirstHour || t.HourlyPriceFirstHour
+                      ? parseFloat(
+                          t.hourlyPriceFirstHour || t.HourlyPriceFirstHour,
+                        )
+                      : parseFloat(bookingForm.hourlyFirstHourPrice) || 100000;
+                  const eHp =
+                    t.hourlyPriceExtraHour || t.HourlyPriceExtraHour
+                      ? parseFloat(
+                          t.hourlyPriceExtraHour || t.HourlyPriceExtraHour,
+                        )
+                      : parseFloat(bookingForm.hourlyExtraHourPrice) || 50000;
+                  return (
+                    sum + (fHp + (hoursEst > 1 ? (hoursEst - 1) * eHp : 0))
+                  );
+                }, 0);
+              } else {
+                const inDate = new Date(
+                  `${currentCheckIn}T${currentInTime}:00`,
+                );
+                const outDate = new Date(
+                  `${currentCheckOut}T${currentOutTime}:00`,
+                );
+                const diffTime = outDate - inDate;
+                diffNights = Math.max(
+                  1,
+                  Math.ceil(diffTime / (1000 * 60 * 60 * 24)),
+                );
+                totalTentPrice = overnightPriceDisplay * diffNights;
+              }
+
+              return (
+                <section className="space-y-5">
+                  {/* 1. Loại hình thuê */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                    <h4 className="text-xs font-black text-[#1B4D3E] uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-200/60 pb-2">
+                      <Compass size={15} /> 1. LOẠI HÌNH THUÊ LỀU
+                    </h4>
+
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200/60 rounded-xl">
                       <button
-                        onClick={() => handleTentClick(tent)}
-                        className="text-error opacity-70 hover:opacity-100"
+                        type="button"
+                        onClick={() =>
+                          setBookingForm({
+                            ...bookingForm,
+                            bookingType: "Hourly",
+                          })
+                        }
+                        className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${isHourly ? "bg-white text-emerald-800 shadow-sm border border-emerald-200 font-extrabold" : "text-slate-600 hover:text-slate-800"}`}
                       >
-                        <X size={16} />
+                        <Clock
+                          size={14}
+                          className={isHourly ? "text-emerald-600" : ""}
+                        />
+                        Thuê Theo Giờ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBookingForm({
+                            ...bookingForm,
+                            bookingType: "Overnight",
+                          })
+                        }
+                        className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${!isHourly ? "bg-white text-emerald-800 shadow-sm border border-emerald-200 font-extrabold" : "text-slate-600 hover:text-slate-800"}`}
+                      >
+                        <CalendarDays
+                          size={14}
+                          className={!isHourly ? "text-emerald-600" : ""}
+                        />
+                        Thuê Qua Đêm
                       </button>
                     </div>
-                  ))}
-                </div>
-              </section>
 
-              <button
-                onClick={submitBooking}
-                className="w-full bg-primary text-on-primary py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-primary/90 transition-all font-bold text-lg shadow-lg"
-              >
-                <CheckCircle2 size={24} />
-                Xác nhận Đặt Lều
-              </button>
-            </section>
-          )}
+                    {isHourly ? (
+                      <div className="bg-emerald-50/80 p-3 rounded-xl border border-emerald-200 text-xs text-emerald-900 font-medium space-y-1">
+                        <p className="font-bold flex items-center gap-1">
+                          Thuê Theo Giờ (Linh Hoạt):
+                        </p>
+                        <p>• Không gò bó thời gian Check-out cố định.</p>
+                        <p>
+                          • Bảng giá lều chọn:{" "}
+                          <strong>
+                            {firstHpDisplay.toLocaleString("vi-VN")}đ (Giờ đầu)
+                          </strong>{" "}
+                          +{" "}
+                          <strong>
+                            {extraHpDisplay.toLocaleString("vi-VN")}đ (Mỗi giờ
+                            tiếp theo)
+                          </strong>
+                          .
+                        </p>
+                        <p>
+                          • Giờ trả thực tế sẽ được tự động tính khi Lễ tân bấm
+                          Check-out!
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-sky-50/80 p-3 rounded-xl border border-sky-200 text-xs text-sky-900 font-medium space-y-1">
+                        <p className="font-bold">Thuê Qua Đêm (Cố Định):</p>
+                        <p>
+                          • Giá lều qua đêm:{" "}
+                          <strong>
+                            {overnightPriceDisplay.toLocaleString("vi-VN")}đ /
+                            đêm
+                          </strong>
+                          .
+                        </p>
+                        <p>
+                          • Nhận lều từ 14:00 ➔ Trả lều trước 12:00 trưa hôm
+                          sau.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Thông tin khách */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                    <h4 className="text-xs font-black text-[#1B4D3E] uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-200/60 pb-2">
+                      <User size={15} /> 2. Thông Tin Khách Hàng
+                    </h4>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">
+                          Tên Khách Đại Diện (*)
+                        </label>
+                        <input
+                          type="text"
+                          value={bookingForm.customerName}
+                          onChange={(e) =>
+                            setBookingForm({
+                              ...bookingForm,
+                              customerName: e.target.value,
+                            })
+                          }
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/20 text-slate-800 text-sm font-semibold"
+                          placeholder="Tên khách hàng ..."
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">
+                          Số Điện Thoại (*)
+                        </label>
+                        <input
+                          type="tel"
+                          value={bookingForm.phoneNumber}
+                          onChange={(e) =>
+                            setBookingForm({
+                              ...bookingForm,
+                              phoneNumber: e.target.value,
+                            })
+                          }
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/20 text-slate-800 text-sm font-semibold"
+                          placeholder="Số điện thoại khách hàng ..."
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">
+                          Ghi Chú Yêu Cầu (Tùy chọn)
+                        </label>
+                        <textarea
+                          rows="2"
+                          value={bookingForm.note || ""}
+                          onChange={(e) =>
+                            setBookingForm({
+                              ...bookingForm,
+                              note: e.target.value,
+                            })
+                          }
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/20 text-slate-800 text-xs font-medium resize-none"
+                          placeholder="Ghi chú dịch vụ..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Ngày giờ lưu trú */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                    <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                      <h4 className="text-xs font-black text-[#1B4D3E] uppercase tracking-wider flex items-center gap-1.5">
+                        <CalendarDays size={15} /> 3. THỜI GIAN LƯU TRÚ
+                      </h4>
+                      <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full uppercase">
+                        {isHourly ? `TÍNH GIỜ REAL-TIME` : `${diffNights} Đêm`}
+                      </span>
+                    </div>
+
+                    {isHourly ? (
+                      /* Hourly Real-time Checkin Fields */
+                      <div className="space-y-3 text-xs">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="font-bold text-slate-700 block mb-1">
+                              Ngày Nhận (In)
+                            </label>
+                            <input
+                              type="date"
+                              value={currentCheckIn}
+                              onChange={(e) =>
+                                setBookingForm({
+                                  ...bookingForm,
+                                  checkInDate: e.target.value,
+                                })
+                              }
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
+                            />
+                          </div>
+                          <div>
+                            <label className="font-bold text-slate-700 block mb-1">
+                              Giờ Vào Lều
+                            </label>
+                            <input
+                              type="time"
+                              value={currentInTime}
+                              onChange={(e) =>
+                                setBookingForm({
+                                  ...bookingForm,
+                                  checkInTime: e.target.value,
+                                })
+                              }
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-900 font-semibold">
+                          ⏱️ Hệ thống tự ghi nhận giờ Check-in. Số giờ ở sẽ tự
+                          động tính từ lúc Check-in đến khi Check-out (Ví dụ: 3
+                          tiếng 20 phút ➔ làm tròn thành 4 tiếng).
+                        </div>
+                      </div>
+                    ) : (
+                      /* Overnight Rental Fields */
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="font-bold text-slate-700 block mb-1">
+                            Ngày Nhận (In)
+                          </label>
+                          <input
+                            type="date"
+                            value={currentCheckIn}
+                            onChange={(e) =>
+                              setBookingForm({
+                                ...bookingForm,
+                                checkInDate: e.target.value,
+                              })
+                            }
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="font-bold text-slate-700 block mb-1">
+                            Giờ Nhận
+                          </label>
+                          <input
+                            type="time"
+                            value={currentInTime}
+                            onChange={(e) =>
+                              setBookingForm({
+                                ...bookingForm,
+                                checkInTime: e.target.value,
+                              })
+                            }
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="font-bold text-slate-700 block mb-1">
+                            Ngày Trả (Out)
+                          </label>
+                          <input
+                            type="date"
+                            value={currentCheckOut}
+                            onChange={(e) =>
+                              setBookingForm({
+                                ...bookingForm,
+                                checkOutDate: e.target.value,
+                              })
+                            }
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="font-bold text-slate-700 block mb-1">
+                            Giờ Trả
+                          </label>
+                          <input
+                            type="time"
+                            value={currentOutTime}
+                            onChange={(e) =>
+                              setBookingForm({
+                                ...bookingForm,
+                                checkOutTime: e.target.value,
+                              })
+                            }
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 4. Chi tiết Lều & Khu Vực */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                    <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                      <h4 className="text-xs font-black text-[#1B4D3E] uppercase tracking-wider flex items-center gap-1.5">
+                        <Home size={15} /> 4. Chi Tiết Lều Đang Chọn (
+                        {selectedTents.length})
+                      </h4>
+                    </div>
+
+                    <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                      {selectedTents.map((tent) => {
+                        const zoneObj =
+                          effectiveZones.find((z) =>
+                            z.tents?.some((t) => t.id === tent.id),
+                          ) || tent.zone;
+                        const rawZone =
+                          zoneObj?.name || tent.zoneName || "Khu lều";
+                        const zoneNameFormatted = rawZone.startsWith("Khu")
+                          ? rawZone
+                          : `Khu ${rawZone}`;
+
+                        return (
+                          <div
+                            key={tent.id}
+                            className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center"
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-slate-800 text-sm">
+                                  Lều {tent.name}
+                                </span>
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">
+                                  {zoneNameFormatted}
+                                </span>
+                              </div>
+                              <p className="text-xs font-bold text-emerald-600 mt-0.5">
+                                {isHourly
+                                  ? `Giá giờ: ${parseInt(bookingForm.hourlyFirstHourPrice || 100000).toLocaleString("vi-VN")}đ (h đầu) + ${parseInt(bookingForm.hourlyExtraHourPrice || 50000).toLocaleString("vi-VN")}đ/h sau`
+                                  : `${tent.price ? tent.price.toLocaleString("vi-VN") + "đ / đêm" : "0đ / đêm"}`}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleTentClick(tent)}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                              title="Bỏ chọn lều này"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 5. Tổng tiền & Tiền Cọc */}
+                  <div className="bg-amber-50/60 p-4 rounded-2xl border border-amber-200/80 space-y-3">
+                    <div className="flex justify-between items-center text-sm font-bold text-slate-700">
+                      <span>
+                        {isHourly
+                          ? "Tạm Tính Thuê Giờ (Dự Kiến):"
+                          : "Tổng Tiền Lều Dự Kiến:"}
+                      </span>
+                      <span className="text-lg font-black text-[#1B4D3E]">
+                        {totalTentPrice.toLocaleString("vi-VN")}đ
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-amber-900 block mb-1">
+                        💳 Tiền Cọc Thu Tại Quầy (VNĐ)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={bookingForm.depositAmount || ""}
+                        onChange={(e) =>
+                          setBookingForm({
+                            ...bookingForm,
+                            depositAmount: e.target.value,
+                          })
+                        }
+                        className="w-full px-3.5 py-2.5 bg-white border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-amber-900 font-extrabold text-base"
+                        placeholder="0đ (Nhập số tiền cọc thu tại quầy)"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Submit Button */}
+                  <button
+                    type="button"
+                    onClick={submitBooking}
+                    className="w-full bg-[#1B4D3E] hover:bg-[#153d31] text-white py-4 rounded-2xl flex items-center justify-center gap-3 transition-all font-black text-lg shadow-xl shadow-[#1B4D3E]/20 active:scale-95"
+                  >
+                    <CheckCircle2 size={24} />
+                    {isHourly
+                      ? "Xác Nhận Thuê Lều Theo Giờ"
+                      : "Xác Nhận Đặt Lều Qua Đêm"}
+                  </button>
+                </section>
+              );
+            })()}
 
           {/* ACTIVE BOOKING REQUEST CARD (Supports Đơn Gộp & Đơn Lẻ) */}
           {activeActionBooking &&
@@ -909,31 +1395,164 @@ export default function ReceptionistBookingPage() {
                         : `👤 ĐƠN ĐẶT LẺ (1 LỀU)`}
                     </span>
                     {activeActionBooking.checkInDate && (
-                      <span className="text-[11px] text-slate-500 font-bold">
+                      <span className="text-xs text-slate-500 font-extrabold bg-slate-100 px-2.5 py-1 rounded-lg">
                         {new Date(
-                          activeActionBooking.checkInDate,
+                          typeof activeActionBooking.checkInDate === "string" &&
+                            activeActionBooking.checkInDate.endsWith("Z")
+                            ? activeActionBooking.checkInDate
+                            : activeActionBooking.checkInDate + "Z",
                         ).toLocaleDateString("vi-VN")}
                       </span>
                     )}
                   </div>
 
-                  {/* Customer Contact Details */}
-                  <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <div className="w-10 h-10 rounded-full bg-[#1B4D3E] text-white flex items-center justify-center font-black text-base flex-shrink-0 shadow-sm">
-                      {activeActionBooking.customerName
-                        ? activeActionBooking.customerName
-                            .charAt(0)
-                            .toUpperCase()
-                        : "K"}
+                  {/* Customer Contact & Booking Schedule Details Card */}
+                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/90 space-y-3 shadow-xs">
+                    {/* Avatar + Name + Phone */}
+                    <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                      <div className="w-10 h-10 rounded-full bg-[#1B4D3E] text-white flex items-center justify-center font-black text-base flex-shrink-0 shadow-sm">
+                        {activeActionBooking.customerName
+                          ? activeActionBooking.customerName
+                              .charAt(0)
+                              .toUpperCase()
+                          : "K"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-slate-800 text-sm truncate">
+                          {activeActionBooking.customerName}
+                        </p>
+                        <a
+                          href={`tel:${activeActionBooking.phoneNumber}`}
+                          className="text-xs text-rose-700 font-mono font-bold flex items-center gap-1 mt-0.5 hover:underline"
+                        >
+                          📞 {activeActionBooking.phoneNumber || "Chưa có SĐT"}
+                        </a>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-extrabold text-slate-800 text-sm">
-                        {activeActionBooking.customerName}
-                      </p>
-                      <p className="text-xs text-slate-600 font-mono font-bold">
-                        📞 {activeActionBooking.phoneNumber || "Chưa có SĐT"}
-                      </p>
+
+                    {/* Detailed Check-in / Check-out Schedule Grid */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {/* Check-in Card */}
+                      <div className="bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/80 space-y-1">
+                        <div className="flex items-center gap-1 text-[10px] font-black text-emerald-800 uppercase tracking-wider">
+                          <Calendar size={12} className="text-emerald-700" />
+                          <span>Check-in</span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          <span className="text-sm font-black text-slate-900 leading-none">
+                            {activeActionBooking.checkInDate
+                              ? new Date(
+                                  activeActionBooking.checkInDate,
+                                ).toLocaleTimeString("vi-VN", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  hour12: false,
+                                })
+                              : "--:--"}
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-600">
+                            {activeActionBooking.checkInDate
+                              ? new Date(
+                                  activeActionBooking.checkInDate,
+                                ).toLocaleDateString("vi-VN", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                })
+                              : "--/--/----"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Check-out Card */}
+                      <div className="bg-amber-50/80 p-2.5 rounded-xl border border-amber-200/80 space-y-1">
+                        <div className="flex items-center gap-1 text-[10px] font-black text-amber-900 uppercase tracking-wider">
+                          <Calendar size={12} className="text-amber-700" />
+                          <span>Check-out</span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          <span className="text-sm font-black text-slate-900 leading-none">
+                            {activeActionBooking.checkOutDate
+                              ? new Date(
+                                  activeActionBooking.checkOutDate,
+                                ).toLocaleTimeString("vi-VN", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  hour12: false,
+                                })
+                              : "--:--"}
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-600">
+                            {activeActionBooking.checkOutDate
+                              ? new Date(
+                                  activeActionBooking.checkOutDate,
+                                ).toLocaleDateString("vi-VN", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                })
+                              : "--/--/----"}
+                          </span>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Actual Check-in / Check-out (If Available) */}
+                    {(activeActionBooking.actualCheckInDate ||
+                      activeActionBooking.actualCheckOutDate) && (
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                        <div className="bg-white p-2 rounded-xl border border-emerald-200/60 space-y-0.5">
+                          <span className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wider block flex items-center gap-1">
+                            <Clock size={11} /> Thực tế nhận
+                          </span>
+                          <span className="font-extrabold text-slate-800 block text-[11px]">
+                            {activeActionBooking.actualCheckInDate
+                              ? `${new Date(activeActionBooking.actualCheckInDate).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false })} - ${new Date(activeActionBooking.actualCheckInDate).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })}`
+                              : "Đã nhận lều"}
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-2 rounded-xl border border-rose-200/60 space-y-0.5">
+                          <span className="text-[10px] font-extrabold text-rose-700 uppercase tracking-wider block flex items-center gap-1">
+                            <Clock size={11} /> Thực tế trả
+                          </span>
+                          <span className="font-extrabold text-slate-800 block text-[11px]">
+                            {activeActionBooking.actualCheckOutDate
+                              ? `${new Date(activeActionBooking.actualCheckOutDate).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false })} - ${new Date(activeActionBooking.actualCheckOutDate).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })}`
+                              : activeActionBooking.status === "CheckedOut"
+                                ? "Đã trả lều"
+                                : "Đang ở"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Booking Request Submission Timestamp */}
+                    {activeActionBooking.bookingTime && (
+                      <div className="flex justify-between items-center text-[11px] text-slate-500 font-medium pt-1 px-1">
+                        <span className="flex items-center gap-1 text-slate-500">
+                          <Clock size={12} className="text-slate-400" /> Đặt
+                          lúc:
+                        </span>
+                        <span className="font-bold text-slate-700">
+                          {new Date(
+                            activeActionBooking.bookingTime,
+                          ).toLocaleTimeString("vi-VN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })}{" "}
+                          -{" "}
+                          {new Date(
+                            activeActionBooking.bookingTime,
+                          ).toLocaleDateString("vi-VN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* MULTI-TENT LIST & INDIVIDUAL PER-TENT QR ACCESS CONTROL */}
@@ -978,11 +1597,11 @@ export default function ReceptionistBookingPage() {
                               >
                                 {isTentUnlocked ? (
                                   <>
-                                    <Unlock size={13} /> 🔓 QR: MỞ
+                                    <Unlock size={13} /> QR: MỞ
                                   </>
                                 ) : (
                                   <>
-                                    <Lock size={13} /> 🔒 QR: KHÓA
+                                    <Lock size={13} /> QR: KHÓA
                                   </>
                                 )}
                               </button>
@@ -994,10 +1613,13 @@ export default function ReceptionistBookingPage() {
                               </span>
 
                               {activeActionBooking.status === "Pending" &&
-                                (activeActionBooking.bookingTents?.length || 0) > 1 && (
+                                (activeActionBooking.bookingTents?.length ||
+                                  0) > 1 && (
                                   <button
                                     type="button"
-                                    onClick={() => handleRemoveTentFromBooking(t.id)}
+                                    onClick={() =>
+                                      handleRemoveTentFromBooking(t.id)
+                                    }
                                     className="p-1.5 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition-colors"
                                     title="Bỏ lều này nếu khách không lấy nữa"
                                   >
@@ -1016,8 +1638,8 @@ export default function ReceptionistBookingPage() {
                     <div className="space-y-4 pt-2">
                       <p className="text-[10px] text-amber-700 font-semibold mt-1.5 italic">
                         * Bấm thùng rác{" "}
-                        <Trash2 size={11} className="inline text-rose-600" />{" "}
-                        để bỏ bớt lều nếu khách đổi ý khi gọi điện.
+                        <Trash2 size={11} className="inline text-rose-600" /> để
+                        bỏ bớt lều nếu khách đổi ý khi gọi điện.
                       </p>
 
                       {/* TOTAL TENT PRICE SUMMARY & DEPOSIT RECOMMENDATION */}
@@ -1141,11 +1763,17 @@ export default function ReceptionistBookingPage() {
                         </div>
                       </div>
                       <button
-                        onClick={() => setSelectedMasterBill({
-                          bookingId: activeActionBooking.id,
-                          tentId: activeActionBooking.tentId || activeActionBooking.bookingTents?.[0]?.id,
-                          tentName: activeActionBooking.tentName || activeActionBooking.bookingTents?.[0]?.name
-                        })}
+                        onClick={() =>
+                          setSelectedMasterBill({
+                            bookingId: activeActionBooking.id,
+                            tentId:
+                              activeActionBooking.tentId ||
+                              activeActionBooking.bookingTents?.[0]?.id,
+                            tentName:
+                              activeActionBooking.tentName ||
+                              activeActionBooking.bookingTents?.[0]?.name,
+                          })
+                        }
                         className="w-full bg-[#1B4D3E] text-white py-3.5 rounded-2xl flex items-center justify-center gap-2.5 hover:bg-[#153d31] transition-all font-bold text-sm shadow-md active:scale-95 mb-2"
                       >
                         <CreditCard size={18} className="text-emerald-300" />
@@ -1156,7 +1784,8 @@ export default function ReceptionistBookingPage() {
                         className="w-full bg-secondary text-on-secondary py-3.5 rounded-2xl flex items-center justify-center gap-2.5 hover:bg-secondary/90 transition-all font-bold text-sm shadow-lg"
                       >
                         <CheckCircle2 size={20} />
-                        Thanh toán Nhanh ({remainingAmount.toLocaleString("vi-VN")}đ) & Trả lều
+                        Thanh toán Nhanh (
+                        {remainingAmount.toLocaleString("vi-VN")}đ) & Trả lều
                       </button>
                     </div>
                   )}
