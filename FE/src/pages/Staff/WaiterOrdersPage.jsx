@@ -134,6 +134,52 @@ export default function WaiterOrdersPage() {
     }
   };
 
+  const [selectedOrderForProof, setSelectedOrderForProof] = useState(null);
+  const [proofFile, setProofFile] = useState(null);
+  const [proofPreview, setProofPreview] = useState(null);
+  const [uploadingProof, setUploadingProof] = useState(false);
+
+  const handleOpenProofModal = (order) => {
+    setSelectedOrderForProof(order);
+    setProofFile(null);
+    setProofPreview(null);
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setProofFile(file);
+      setProofPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleUploadProofAndComplete = async () => {
+    if (!selectedOrderForProof) return;
+    setUploadingProof(true);
+
+    try {
+      const formData = new FormData();
+      if (proofFile) {
+        formData.append("photo", proofFile);
+      }
+      formData.append("deliveredBy", user?.fullName || user?.username || "Nhân viên chạy bàn");
+
+      const res = await fetch(getApiUrl(`/api/Orders/${selectedOrderForProof.id || selectedOrderForProof.batchId}/upload-proof`), {
+        method: 'POST',
+        body: formData
+      });
+
+      if (res.ok) {
+        setOrders(orders.filter(o => o.id !== selectedOrderForProof.id));
+        setSelectedOrderForProof(null);
+      }
+    } catch (err) {
+      console.error("Lỗi tải ảnh xác nhận:", err);
+    } finally {
+      setUploadingProof(false);
+    }
+  };
+
   const getLocationFormatted = (order) => {
     const tent = order.tent;
     if (!tent) return "Vị Trí Chưa Xác Định";
@@ -161,10 +207,40 @@ export default function WaiterOrdersPage() {
     return { icon, text: entityTitle, isTable };
   };
 
+  const [locationFilter, setLocationFilter] = useState('ALL'); // 'ALL' | 'TABLE' | 'TENT'
+
+  const filteredOrders = orders.filter(order => {
+    const loc = getLocationFormatted(order);
+    if (locationFilter === 'TABLE') return loc.isTable;
+    if (locationFilter === 'TENT') return !loc.isTable;
+    return true;
+  });
+
   if (loading) return <div className="p-6 text-center text-slate-500 animate-pulse">Đang đồng bộ đơn hàng...</div>;
 
   return (
     <div className="p-4 space-y-4 pb-12 relative h-full">
+      
+      {/* Location Filter Sub-bar for Waiters */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 bg-white p-2 rounded-2xl border border-slate-100 shadow-xs">
+        {[
+          { key: 'ALL', label: `Tất cả (${orders.length})` },
+          { key: 'TABLE', label: `🍽️ Bàn ăn (${orders.filter(o => getLocationFormatted(o).isTable).length})` },
+          { key: 'TENT', label: `⛺ Lều (${orders.filter(o => !getLocationFormatted(o).isTable).length})` }
+        ].map(f => (
+          <button
+            key={f.key}
+            onClick={() => setLocationFilter(f.key)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex-shrink-0 ${
+              locationFilter === f.key
+                ? 'bg-[#1B4D3E] text-white shadow-sm'
+                : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
       
       {/* Fullscreen Alert Modal for Waiter */}
       {newOrderAlert && (
@@ -191,11 +267,11 @@ export default function WaiterOrdersPage() {
         </div>
       )}
 
-      {orders.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-[70vh] opacity-50">
-          <CheckCircle2 size={64} className="text-emerald-500 mb-4" />
-          <h2 className="text-xl font-bold text-slate-600">Tuyệt vời!</h2>
-          <p className="text-slate-500 font-medium text-center px-4">Tất cả món đã được giao, hoặc Bếp chưa làm xong.</p>
+      {filteredOrders.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-[50vh] opacity-50 space-y-2">
+          <CheckCircle2 size={56} className="text-emerald-500" />
+          <h2 className="text-lg font-bold text-slate-600">Không có đơn cần giao trong mục này</h2>
+          <p className="text-xs text-slate-500 font-medium text-center px-4">Tất cả món đã được giao, hoặc Bếp chưa làm xong.</p>
         </div>
       ) : (
         <div className="space-y-5">
@@ -205,11 +281,11 @@ export default function WaiterOrdersPage() {
               <p className="text-xs text-slate-500 font-bold">Bếp đã làm xong</p>
             </div>
             <span className="bg-rose-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-sm shadow-rose-500/30">
-              {orders.length} Đơn
+              {filteredOrders.length} Đơn
             </span>
           </div>
 
-          {orders.map(order => {
+          {filteredOrders.map(order => {
             const loc = getLocationFormatted(order);
             const customerName = order.booking?.customerName || order.customerName || "Khách tại bàn";
 
@@ -265,15 +341,79 @@ export default function WaiterOrdersPage() {
                 </div>
 
                 <button 
-                  onClick={() => completeOrder(order.id)}
+                  onClick={() => handleOpenProofModal(order)}
                   className="w-full ml-2 py-4 bg-[#1B4D3E] hover:bg-[#153d31] text-white font-black text-lg rounded-2xl shadow-xl shadow-[#1B4D3E]/20 transition-all flex justify-center items-center gap-2 active:scale-95"
                 >
                   <CheckCircle2 size={22} />
-                  Xác Nhận Đã Giao Xong
+                  Chụp Ảnh & Giao Hàng
                 </button>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* WAITER PHOTO PROOF UPLOAD MODAL */}
+      {selectedOrderForProof && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl border border-slate-100 animate-in zoom-in-95">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-black text-base text-slate-900">📸 Xác Nhận Giao Món</h3>
+                <p className="text-xs text-slate-500 font-bold mt-0.5">Chụp ảnh món ăn/thức uống đã đặt tại lều</p>
+              </div>
+              <button
+                onClick={() => setSelectedOrderForProof(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 font-bold text-slate-500 text-sm flex items-center justify-center"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Photo Capture Area */}
+            <div className="space-y-3">
+              {proofPreview ? (
+                <div className="relative rounded-2xl overflow-hidden border border-emerald-300 shadow-md">
+                  <img src={proofPreview} alt="Proof" className="w-full h-48 object-cover" />
+                  <button
+                    onClick={() => { setProofFile(null); setProofPreview(null); }}
+                    className="absolute top-2 right-2 bg-slate-900/80 text-white p-1.5 rounded-full text-xs font-bold"
+                  >
+                    Chụp lại
+                  </button>
+                </div>
+              ) : (
+                <label className="border-2 border-dashed border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all">
+                  <span className="text-3xl mb-2">📷</span>
+                  <span className="text-xs font-black text-[#1B4D3E]">Bấm để Mở Camera / Chọn Ảnh</span>
+                  <span className="text-[10px] text-slate-400 font-medium mt-1">Ảnh sẽ được lưu vết vào hồ sơ đơn Lễ tân</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </label>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setSelectedOrderForProof(null)}
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleUploadProofAndComplete}
+                disabled={uploadingProof}
+                className="flex-1 py-3 bg-[#1B4D3E] hover:bg-[#153d31] text-white font-black rounded-xl text-xs shadow-md shadow-[#1B4D3E]/20 disabled:opacity-50"
+              >
+                {uploadingProof ? "Đang tải ảnh..." : "Xác Nhận Đã Giao"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

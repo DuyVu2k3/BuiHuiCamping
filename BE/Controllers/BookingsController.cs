@@ -103,7 +103,12 @@ namespace BuiHuiCamping.API.Controllers
                 var tentsList = b.Tents.Select(t => {
                     string rZone = t.Zone?.Name ?? "";
                     string rTent = t.Name ?? "";
-                    string tFormatted = rTent.StartsWith("Lều") ? rTent : $"Lều {rTent}";
+                    bool isDiningTable = (t.Zone?.ZoneType == "DiningTable") || 
+                                          (!string.IsNullOrEmpty(rZone) && (rZone.Contains("Bàn") || rZone.Contains("ẩm thực") || rZone.Contains("Ẩm thực"))) ||
+                                          rTent.StartsWith("Bàn");
+                    string tFormatted = rTent.StartsWith("Lều") || rTent.StartsWith("Bàn") 
+                        ? rTent 
+                        : (isDiningTable ? $"Bàn {rTent}" : $"Lều {rTent}");
                     string zFormatted = (!string.IsNullOrEmpty(rZone) && !rZone.StartsWith("Khu")) ? $"Khu {rZone}" : rZone;
                     string locName = !string.IsNullOrEmpty(zFormatted) ? $"{zFormatted} - {tFormatted}" : tFormatted;
                     return new {
@@ -401,7 +406,12 @@ namespace BuiHuiCamping.API.Controllers
             var tentsList = booking.Tents.Select(t => {
                 string rZone = t.Zone?.Name ?? "";
                 string rTent = t.Name ?? "";
-                string tFormatted = rTent.StartsWith("Lều") ? rTent : $"Lều {rTent}";
+                bool isDiningTable = (t.Zone?.ZoneType == "DiningTable") || 
+                                      (!string.IsNullOrEmpty(rZone) && (rZone.Contains("Bàn") || rZone.Contains("ẩm thực") || rZone.Contains("Ẩm thực"))) ||
+                                      rTent.StartsWith("Bàn");
+                string tFormatted = rTent.StartsWith("Lều") || rTent.StartsWith("Bàn") 
+                    ? rTent 
+                    : (isDiningTable ? $"Bàn {rTent}" : $"Lều {rTent}");
                 string zFormatted = (!string.IsNullOrEmpty(rZone) && !rZone.StartsWith("Khu")) ? $"Khu {rZone}" : rZone;
                 string locName = !string.IsNullOrEmpty(zFormatted) ? $"{zFormatted} - {tFormatted}" : tFormatted;
                 return new {

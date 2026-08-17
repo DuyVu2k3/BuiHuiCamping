@@ -1,310 +1,290 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Clock, Flame, Info, ChefHat, BellRing, CreditCard } from 'lucide-react';
-import MasterBillModal from './MasterBillModal';
+import { CheckCircle2, Clock, Flame, Info, ChefHat, BellRing, Eye, AlertTriangle, Image as ImageIcon, RefreshCw, X } from 'lucide-react';
 import { getApiUrl } from '../../apiConfig';
 import signalRService from '../../services/signalrService';
 
 export default function ReceptionistOrdersPage() {
-  const [orders, setOrders] = useState([]);
+  const [auditBatches, setAuditBatches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [newOrderAlert, setNewOrderAlert] = useState(null);
-  const [selectedBillBooking, setSelectedBillBooking] = useState(null);
+  const [filterStatus, setFilterStatus] = useState('ALL'); // ALL, IN_PROGRESS, REJECTED, COMPLETED
+  const [viewingProofImage, setViewingProofImage] = useState(null);
 
-  const fetchOrders = async () => {
+  const fetchAuditHistory = async () => {
     try {
-      const res = await fetch(getApiUrl('/api/Orders'));
+      const res = await fetch(getApiUrl('/api/Orders/all-history'));
       const data = await res.json();
-      setOrders(data);
+      setAuditBatches(data);
     } catch (err) {
-      console.error(err);
+      console.error("Lỗi lấy nhật ký đơn:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const playSoundChime = () => {
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
-      
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(880, ctx.currentTime);
-      osc1.frequency.exponentialRampToValueAtTime(1046.5, ctx.currentTime + 0.15);
-      
-      gain1.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-      
-      osc1.connect(gain1);
-      gain1.connect(ctx.destination);
-      
-      osc1.start(ctx.currentTime);
-      osc1.stop(ctx.currentTime + 0.5);
-    } catch (e) {
-      console.log("Audio play blocked", e);
-    }
-  };
-
   useEffect(() => {
-    fetchOrders();
-
-    const handleNewFoodOrder = (notification) => {
-      setNewOrderAlert(notification);
-      playSoundChime();
-      fetchOrders();
-      setTimeout(() => setNewOrderAlert(null), 8000);
-    };
+    fetchAuditHistory();
 
     const handleOrderUpdated = () => {
-      fetchOrders();
+      fetchAuditHistory();
     };
 
-    signalRService.on("NewFoodOrder", handleNewFoodOrder);
+    signalRService.on("NewFoodOrder", handleOrderUpdated);
     signalRService.on("OrderUpdated", handleOrderUpdated);
     signalRService.on("OrderStatusUpdated", handleOrderUpdated);
+    signalRService.on("OrderRejected", handleOrderUpdated);
+    signalRService.on("OrderCancelled", handleOrderUpdated);
 
     return () => {
-      signalRService.off("NewFoodOrder", handleNewFoodOrder);
+      signalRService.off("NewFoodOrder", handleOrderUpdated);
       signalRService.off("OrderUpdated", handleOrderUpdated);
       signalRService.off("OrderStatusUpdated", handleOrderUpdated);
+      signalRService.off("OrderRejected", handleOrderUpdated);
+      signalRService.off("OrderCancelled", handleOrderUpdated);
     };
   }, []);
 
-  const updateStatus = async (orderId, newStatus) => {
-    try {
-      const res = await fetch(getApiUrl(`/api/Orders/${orderId}/status`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newStatus)
-      });
-      if (res.ok) {
-        // Optimistic update
-        setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  const [locationFilter, setLocationFilter] = useState('ALL'); // ALL, TABLE, TENT
+
+  const isTableBatch = (batch) => {
+    const loc = (batch.locationName || "").toLowerCase();
+    return loc.includes("bàn") || loc.includes("ẩm thực") || loc.includes("nhà hàng") || loc.includes("ăn uống");
   };
 
-  const pendingOrders = orders.filter(o => o.status === 'Pending');
-  const preparingOrders = orders.filter(o => o.status === 'Preparing');
-
-  const OrderCard = ({ order, isPending }) => {
-    const rawZone = order.tent?.zoneName || order.tent?.zone?.name || "";
-    const rawTentName = order.tent?.name || "";
-
-    const zoneLower = rawZone.toLowerCase();
-    const nameLower = rawTentName.toLowerCase();
-    const isTable = zoneLower.includes("bàn") || zoneLower.includes("ẩm thực") || zoneLower.includes("nhà hàng") || zoneLower.includes("ăn uống") || nameLower.includes("bàn");
-
-    let tentNameFormatted = rawTentName;
-    if (isTable) {
-      if (!nameLower.startsWith("bàn")) {
-        tentNameFormatted = `Bàn ${rawTentName}`;
-      }
-    } else {
-      if (!nameLower.startsWith("lều")) {
-        tentNameFormatted = `Lều ${rawTentName}`;
-      }
-    }
-
-    const zoneFormatted = (rawZone && !rawZone.startsWith("Khu")) ? `Khu ${rawZone}` : rawZone;
-    const tentLocation = zoneFormatted ? `${zoneFormatted} - ${tentNameFormatted}` : tentNameFormatted;
+  const filteredBatches = auditBatches.filter(b => {
+    if (filterStatus === 'IN_PROGRESS' && !(b.status === 'Pending' || b.status === 'Preparing' || b.status === 'Ready')) return false;
+    if (filterStatus === 'REJECTED' && !(b.status === 'Cancelled' || b.status === 'Rejected')) return false;
+    if (filterStatus === 'COMPLETED' && !(b.status === 'Delivered' || b.status === 'Completed')) return false;
     
-    let customerName = order.booking?.customerName || "Khách hàng";
-    if (customerName.startsWith("Khách lều") || customerName.startsWith("Khách Lều")) {
-      customerName = "Khách hàng";
+    if (locationFilter === 'TABLE' && !isTableBatch(b)) return false;
+    if (locationFilter === 'TENT' && isTableBatch(b)) return false;
+
+    return true;
+  });
+
+  const getStatusBadge = (batch) => {
+    if (batch.status === 'Cancelled' || batch.status === 'Rejected') {
+      return (
+        <span className="bg-rose-100 text-rose-800 border border-rose-300 px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1">
+          <AlertTriangle size={13} /> Bếp Từ Chối
+        </span>
+      );
     }
-
-    // Helper: Check if order requires Kitchen preparation (Food / Drink vs Services)
-    const hasKitchenItems = (order.orderDetails || []).some(detail => {
-      const cat = (detail.menuItem?.category || "").toLowerCase();
-      if (cat === 'food' || cat === 'drink' || cat === 'đồ ăn' || cat === 'đồ uống') return true;
-      if (cat === 'service' || cat === 'dịch vụ') return false;
-      const name = (detail.menuItem?.name || "").toLowerCase();
-      if (name.includes("bếp than") || name.includes("dịch vụ") || name.includes("thuê") || name.includes("lều") || name.includes("lửa trại")) return false;
-      return true;
-    });
-
+    if (batch.status === 'Delivered' || batch.status === 'Completed') {
+      return (
+        <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1">
+          <CheckCircle2 size={13} /> Đã Giao Món
+        </span>
+      );
+    }
+    if (batch.status === 'Ready') {
+      return (
+        <span className="bg-amber-400 text-slate-900 border border-amber-500 px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1 animate-pulse">
+          <BellRing size={13} /> Gọi Chạy Bàn
+        </span>
+      );
+    }
+    if (batch.status === 'Pending') {
+      return (
+        <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1 animate-pulse">
+          <Clock size={13} /> Đang Chờ Bếp Nhận Đơn
+        </span>
+      );
+    }
     return (
-      <div className="bg-white rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all group relative overflow-hidden">
-        <div className={`absolute top-0 left-0 w-1.5 h-full ${isPending ? 'bg-rose-500' : 'bg-amber-500'} rounded-l-3xl`}></div>
-        
-        <div className="flex justify-between items-start mb-3 pl-2">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-2 py-1 rounded-lg">
-                <Clock size={12} />
-                <span className="text-xs font-bold">
-                  {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
-                </span>
-              </div>
-              {hasKitchenItems ? (
-                <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-md">
-                  🍖 Đồ Ăn / Uống
-                </span>
-              ) : (
-                <span className="bg-sky-100 text-sky-900 border border-sky-300 text-[10px] font-black px-2 py-0.5 rounded-md">
-                  ✨ Dịch Vụ (Không Qua Bếp)
-                </span>
-              )}
-            </div>
-            {/* Line 1: Customer Representative Name */}
-            <h3 className="text-base font-black text-[#1B4D3E] tracking-tight">Khách: {customerName}</h3>
-            {/* Line 2: Zone & Tent Number */}
-            <p className="text-xs font-extrabold text-slate-600 mt-0.5 flex items-center gap-1">
-              <span>📍 {tentLocation}</span>
-            </p>
-          </div>
-        </div>
-
-      <div className="flex-1 space-y-2.5 bg-slate-50/50 p-3.5 rounded-2xl mb-4 ml-2 border border-slate-100/60">
-        {order.orderDetails?.map(detail => (
-          <div key={detail.id} className="flex justify-between items-start border-b border-slate-200/60 pb-2.5 last:border-0 last:pb-0">
-            <div className="flex-1 pr-3">
-              <p className="font-bold text-slate-700 text-sm leading-tight">{detail.menuItem?.name}</p>
-              {detail.note && (
-                <p className="text-xs text-rose-500 font-medium italic flex items-center gap-1 mt-1 bg-rose-50/50 p-1 rounded-md border border-rose-100/50">
-                  <Info size={12} /> {detail.note}
-                </p>
-              )}
-            </div>
-            <span className="font-black text-sm text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded-lg shadow-sm">
-              x{detail.quantity}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div className="ml-2 mt-auto">
-        {hasKitchenItems ? (
-          /* Orders with Food/Drink require sending to Kitchen first */
-          isPending ? (
-            <button 
-              onClick={() => updateStatus(order.id, 'Preparing')}
-              className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-lg shadow-slate-900/20 transition-all active:scale-95 flex justify-center items-center gap-2"
-            >
-              <ChefHat size={18} />
-              Đã Báo Bếp
-            </button>
-          ) : (
-            <button 
-              onClick={() => updateStatus(order.id, 'Ready')}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-lg shadow-emerald-600/20 transition-all active:scale-95 flex justify-center items-center gap-2"
-            >
-              <BellRing size={18} className="animate-wiggle" />
-              Gọi Chạy Bàn / Ra Món
-            </button>
-          )
-        ) : (
-          /* Service-only Orders (e.g. Bếp Than, Thuê Lều) skip Kitchen and directly call Waiter */
-          <button 
-            onClick={() => updateStatus(order.id, 'Ready')}
-            className="w-full py-3 bg-sky-700 hover:bg-sky-800 text-white font-bold rounded-2xl shadow-lg shadow-sky-700/20 transition-all active:scale-95 flex justify-center items-center gap-2"
-          >
-            <BellRing size={18} />
-            Gọi Chạy Bàn (Giao Dịch Vụ)
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
+      <span className="bg-sky-100 text-sky-800 border border-sky-300 px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1">
+        <ChefHat size={13} /> Bếp Đang Chế Biến
+      </span>
+    );
+  };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto h-[100dvh] flex flex-col relative">
-      
-      {/* Toast Alert */}
-      {newOrderAlert && (
-        <div className="absolute top-8 right-8 bg-rose-500 text-white p-5 rounded-2xl shadow-2xl shadow-rose-500/40 flex items-center gap-4 z-50 animate-in slide-in-from-right-10 fade-in duration-300 min-w-[300px]">
-          <Flame size={32} className="animate-pulse flex-shrink-0" />
-          <div>
-            <p className="font-bold text-lg leading-tight">{newOrderAlert.tentName} ĐẶT MÓN!</p>
-            <p className="text-sm opacity-90">{newOrderAlert.customerName}</p>
+    <div className="p-8 max-w-7xl mx-auto min-h-[100dvh] flex flex-col relative bg-[#FAF7F2]">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Giám Sát & Nhật Ký Đi Đơn</h1>
+            <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase">Real-time Live</span>
           </div>
+          <p className="text-slate-500 font-medium text-xs mt-1">Đơn đặt từ QR đến thẳng Bếp ➔ Bếp báo Chạy bàn ➔ Chạy bàn giao & chụp ảnh xác nhận</p>
+        </div>
+
+        <button
+          onClick={fetchAuditHistory}
+          className="p-2.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-2xl text-slate-700 font-bold text-xs flex items-center gap-2 shadow-xs"
+        >
+          <RefreshCw size={15} className={loading ? "animate-spin text-emerald-600" : ""} />
+          Tải lại dữ liệu
+        </button>
+      </div>
+
+      {/* Filter Tabs (Status & Location) */}
+      <div className="space-y-3 mb-6">
+        {/* Status Filter Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          {[
+            { key: 'ALL', label: 'Tất Cả Đơn' },
+            { key: 'IN_PROGRESS', label: '⏳ Đang Chế Biến / Chờ Giao' },
+            { key: 'COMPLETED', label: '✅ Đã Giao Xong (Có Ảnh)' },
+            { key: 'REJECTED', label: '❌ Bếp Từ Chối' }
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setFilterStatus(tab.key)}
+              className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all flex-shrink-0 ${
+                filterStatus === tab.key
+                  ? 'bg-[#1B4D3E] text-white shadow-md'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Location Filter Sub-tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto">
+          <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Vị Trí:</span>
+          {[
+            { key: 'ALL', label: `Tất Cả Vị Trí (${auditBatches.length})` },
+            { key: 'TABLE', label: `🍽️ Bàn Khu Ẩm Thực (${auditBatches.filter(isTableBatch).length})` },
+            { key: 'TENT', label: `⛺ Lều Cắm Trại (${auditBatches.filter(b => !isTableBatch(b)).length})` }
+          ].map(loc => (
+            <button
+              key={loc.key}
+              onClick={() => setLocationFilter(loc.key)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all flex-shrink-0 ${
+                locationFilter === loc.key
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {loc.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Order Audit Timeline Grid */}
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center py-20">
+          <div className="text-slate-400 font-bold animate-pulse flex items-center gap-2">
+            <RefreshCw className="animate-spin" size={20} /> Đang tải lịch sử đi đơn...
+          </div>
+        </div>
+      ) : filteredBatches.length === 0 ? (
+        <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 shadow-xs space-y-3">
+          <p className="text-4xl">📋</p>
+          <p className="font-extrabold text-slate-700 text-base">Chưa có dữ liệu đợt gọi món nào trong mục này.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredBatches.map(batch => (
+            <div
+              key={batch.batchId}
+              className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between relative overflow-hidden"
+            >
+              <div>
+                {/* Header: Location & Status */}
+                <div className="flex justify-between items-start mb-3 border-b border-slate-100 pb-3">
+                  <div>
+                    <span className="text-[10px] font-black text-[#7C5A38] uppercase tracking-wider block">Vị Trí</span>
+                    <h3 className="text-lg font-black text-[#1B4D3E]">{batch.locationName}</h3>
+                    <p className="text-xs text-slate-500 font-bold mt-0.5">Khách: {batch.customerName}</p>
+                  </div>
+                  {getStatusBadge(batch)}
+                </div>
+
+                {/* Timestamp */}
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 mb-3">
+                  <Clock size={13} />
+                  <span>{new Date(batch.createdAt.endsWith('Z') ? batch.createdAt : batch.createdAt + 'Z').toLocaleString('vi-VN')}</span>
+                </div>
+
+                {/* Items List */}
+                <div className="bg-slate-50/80 p-3.5 rounded-2xl space-y-2 border border-slate-200/60 mb-4">
+                  {batch.items?.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-xs">
+                      <span className="font-extrabold text-slate-800">{item.name}</span>
+                      <span className="font-black text-emerald-800 bg-white px-2 py-0.5 rounded-lg border border-slate-200">x{item.quantity}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Rejection Reason Box */}
+                {batch.rejectReason && (
+                  <div className="bg-rose-50 p-3 rounded-2xl border border-rose-200 text-xs text-rose-900 font-medium mb-4 space-y-1">
+                    <p className="font-extrabold flex items-center gap-1 text-rose-700">
+                      <AlertTriangle size={14} /> Lý Do Bếp Từ Chối:
+                    </p>
+                    <p className="italic bg-white p-2 rounded-xl border border-rose-100">{batch.rejectReason}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Delivery Proof Photo Footer */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                {batch.deliveredBy && (
+                  <p className="text-xs text-slate-600 font-bold">
+                    👤 Người giao: <strong className="text-emerald-800 font-extrabold">{batch.deliveredBy}</strong>
+                  </p>
+                )}
+
+                {batch.proofImage ? (
+                  <button
+                    onClick={() => setViewingProofImage(getApiUrl(batch.proofImage))}
+                    className="w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold rounded-xl border border-emerald-300 text-xs flex items-center justify-center gap-1.5 transition-all shadow-2xs"
+                  >
+                    <ImageIcon size={16} />
+                    <span>📸 Xem Ảnh Xác Nhận Giao Hàng</span>
+                  </button>
+                ) : (
+                  (batch.status === 'Delivered' || batch.status === 'Completed') && (
+                    <span className="text-[11px] text-slate-400 italic font-medium block text-center">
+                      Đã xác nhận giao (Không tải ảnh)
+                    </span>
+                  )
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex justify-between items-end mb-8">
-        <div>
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight">Điều phối Bếp</h1>
-          <p className="text-slate-500 font-medium mt-1">Tiếp nhận đơn và điều phối nhà bếp - chạy bàn</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-2">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-            </span>
-            <span className="text-sm font-bold text-slate-700">Đang trực Order</span>
-          </div>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-slate-400 font-bold animate-pulse">Đang tải dữ liệu...</div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1 overflow-hidden pb-4">
-          
-          {/* Column 1: Đơn Mới (Pending) */}
-          <div className="bg-slate-50/50 p-6 rounded-[2.5rem] border border-slate-200/60 flex flex-col h-full overflow-hidden">
-            <div className="flex justify-between items-center mb-4 px-2">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
-                  <Flame size={18} />
-                </div>
-                <h2 className="text-xl font-bold text-slate-800">Đơn Mới</h2>
+      {/* PROOF PHOTO FULL VIEWER MODAL */}
+      {viewingProofImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl p-5 space-y-4 animate-in zoom-in-95">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-[#1B4D3E]">
+                <ImageIcon size={20} />
+                <h3 className="font-black text-base text-slate-900">📸 Ảnh Chụp Xác Nhận Giao Món</h3>
               </div>
-              <span className="bg-rose-500 text-white font-extrabold text-xs px-2.5 py-1 rounded-full">
-                {pendingOrders.length}
-              </span>
+              <button
+                onClick={() => setViewingProofImage(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 font-bold text-slate-500 text-sm flex items-center justify-center"
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-              {pendingOrders.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-slate-400 font-medium text-sm border-2 border-dashed border-slate-200 rounded-3xl">
-                  Chưa có đơn hàng mới nào
-                </div>
-              ) : (
-                pendingOrders.map(order => (
-                  <OrderCard key={order.id} order={order} isPending={true} />
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Column 2: Đang Làm Bếp (Preparing) */}
-          <div className="bg-slate-50/50 p-6 rounded-[2.5rem] border border-slate-200/60 flex flex-col h-full overflow-hidden">
-            <div className="flex justify-between items-center mb-4 px-2">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
-                  <ChefHat size={18} />
-                </div>
-                <h2 className="text-xl font-bold text-slate-800">Đang làm Bếp</h2>
-              </div>
-              <span className="bg-amber-500 text-white font-extrabold text-xs px-2.5 py-1 rounded-full">
-                {preparingOrders.length}
-              </span>
+            <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 flex items-center justify-center">
+              <img
+                src={viewingProofImage}
+                alt="Proof Photo"
+                className="max-h-[60vh] w-full object-contain"
+              />
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-              {preparingOrders.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-slate-400 font-medium text-sm border-2 border-dashed border-slate-200 rounded-3xl">
-                  Bếp đang rảnh
-                </div>
-              ) : (
-                preparingOrders.map(order => (
-                  <OrderCard key={order.id} order={order} isPending={false} />
-                ))
-              )}
+            <div className="text-center pt-1">
+              <button
+                onClick={() => setViewingProofImage(null)}
+                className="px-6 py-2.5 bg-[#1B4D3E] text-white font-black text-xs rounded-xl shadow-md"
+              >
+                Đóng Cửa Sổ
+              </button>
             </div>
           </div>
-
         </div>
       )}
     </div>

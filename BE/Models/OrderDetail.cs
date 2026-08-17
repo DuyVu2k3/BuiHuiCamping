@@ -13,5 +13,8 @@ namespace BuiHuiCamping.API.Models
         public string Status { get; set; } = "Pending"; // Pending, Preparing, Delivered
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public string? BatchId { get; set; }
+        public string? RejectReason { get; set; }
+        public string? DeliveredBy { get; set; }
+        public string? ProofImage { get; set; }
     }
 }

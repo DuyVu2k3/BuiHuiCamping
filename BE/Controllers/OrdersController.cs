@@ -24,6 +24,11 @@ namespace BuiHuiCamping.API.Controllers
         public string? Note { get; set; }
     }
 
+    public class RejectOrderDto
+    {
+        public string Reason { get; set; } = string.Empty;
+    }
+
     [Route("api/[controller]")]
     [ApiController]
     public class OrdersController : ControllerBase
@@ -41,7 +46,7 @@ namespace BuiHuiCamping.API.Controllers
         [HttpGet]
         public async Task<IActionResult> GetActiveOrders()
         {
-            // Get all order details that are not yet Delivered
+            // Get all order details that are not yet Delivered or Cancelled
             var activeDetails = await _context.OrderDetails
                 .Include(od => od.MenuItem)
                 .Include(od => od.Order!)
@@ -71,6 +76,9 @@ namespace BuiHuiCamping.API.Controllers
                         id = first.BatchId ?? first.Id.ToString(),
                         batchId = first.BatchId,
                         status = first.Status, // Pending, Preparing, Ready
+                        rejectReason = first.RejectReason,
+                        deliveredBy = first.DeliveredBy,
+                        proofImage = first.ProofImage,
                         createdAt = g.Min(od => od.CreatedAt),
                         tent = new {
                             id = tentObj?.Id,
@@ -90,7 +98,10 @@ namespace BuiHuiCamping.API.Controllers
                             quantity = od.Quantity,
                             unitPrice = od.UnitPrice,
                             note = od.Note,
-                            status = od.Status
+                            status = od.Status,
+                            rejectReason = od.RejectReason,
+                            deliveredBy = od.DeliveredBy,
+                            proofImage = od.ProofImage
                         }).ToList()
                     };
                 })
@@ -345,6 +356,190 @@ namespace BuiHuiCamping.API.Controllers
             }
 
             return Ok(new { batchId, status = targetStatus });
+        }
+
+        // 5. Kitchen Rejects an Order Batch with a preset Reason
+        [HttpPut("{batchId}/reject")]
+        public async Task<IActionResult> RejectBatchOrder(string batchId, [FromBody] RejectOrderDto dto)
+        {
+            var details = await _context.OrderDetails
+                .Include(od => od.Order!)
+                .Where(od => od.BatchId == batchId || od.Id.ToString() == batchId)
+                .ToListAsync();
+
+            if (!details.Any()) return NotFound("Không tìm thấy đợt gọi món này.");
+
+            string reasonText = !string.IsNullOrWhiteSpace(dto.Reason) ? dto.Reason : "Bếp hiện chưa thể phục vụ đợt món này";
+
+            foreach (var od in details)
+            {
+                od.Status = "Cancelled";
+                od.RejectReason = reasonText;
+            }
+
+            var first = details.First();
+            if (first.Order != null)
+            {
+                decimal rejectedTotal = details.Sum(d => d.UnitPrice * d.Quantity);
+                first.Order.TotalAmount = Math.Max(0, first.Order.TotalAmount - rejectedTotal);
+                first.Order.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+
+            await _hubContext.Clients.All.SendAsync("OrderRejected", new { batchId, reason = reasonText });
+            await _hubContext.Clients.All.SendAsync("OrderUpdated");
+
+            return Ok(new { batchId, status = "Cancelled", reason = reasonText });
+        }
+
+        // 5.5 Customer cancels order BEFORE Kitchen starts cooking
+        [HttpPut("{batchId}/cancel-by-customer")]
+        public async Task<IActionResult> CancelOrderByCustomer(string batchId)
+        {
+            var details = await _context.OrderDetails
+                .Include(od => od.Order!)
+                .Where(od => od.BatchId == batchId || od.Id.ToString() == batchId)
+                .ToListAsync();
+
+            if (!details.Any()) return NotFound("Không tìm thấy đợt gọi món này.");
+
+            // CRITICAL BUSINESS LOGIC:
+            // Customer can ONLY cancel if the order HAS NOT BEEN CONFIRMED by Kitchen (status must be Pending).
+            bool anyStartedCooking = details.Any(od => od.Status != "Pending");
+            if (anyStartedCooking)
+            {
+                return BadRequest(new { message = "Bếp đã tiếp nhận đơn hàng này và đang chế biến. Bạn không thể tự hủy đơn nữa!" });
+            }
+
+            foreach (var od in details)
+            {
+                od.Status = "Cancelled";
+                od.RejectReason = "Khách hàng chủ động hủy đơn trước khi Bếp làm";
+            }
+
+            var first = details.First();
+            if (first.Order != null)
+            {
+                decimal canceledTotal = details.Sum(d => d.UnitPrice * d.Quantity);
+                first.Order.TotalAmount = Math.Max(0, first.Order.TotalAmount - canceledTotal);
+                first.Order.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+
+            await _hubContext.Clients.All.SendAsync("OrderCancelled", new { batchId, reason = "Hủy bởi khách hàng" });
+            await _hubContext.Clients.All.SendAsync("OrderUpdated");
+
+            return Ok(new { batchId, status = "Cancelled", message = "Đã hủy đợt gọi món thành công." });
+        }
+
+        // 6. Waiter completes order by uploading delivery proof photo
+        [HttpPost("{batchId}/upload-proof")]
+        public async Task<IActionResult> UploadDeliveryProof(string batchId, [FromForm] IFormFile? photo, [FromForm] string? deliveredBy)
+        {
+            var details = await _context.OrderDetails
+                .Include(od => od.Order!)
+                .Where(od => od.BatchId == batchId || od.Id.ToString() == batchId)
+                .ToListAsync();
+
+            if (!details.Any()) return NotFound("Không tìm thấy đợt gọi món.");
+
+            string proofUrl = "";
+            if (photo != null && photo.Length > 0)
+            {
+                var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "delivery_proofs");
+                if (!Directory.Exists(uploadsFolder))
+                {
+                    Directory.CreateDirectory(uploadsFolder);
+                }
+
+                var fileName = $"proof_{batchId}_{DateTime.UtcNow.Ticks}{Path.GetExtension(photo.FileName)}";
+                var filePath = Path.Combine(uploadsFolder, fileName);
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await photo.CopyToAsync(stream);
+                }
+
+                proofUrl = $"/uploads/delivery_proofs/{fileName}";
+            }
+
+            foreach (var od in details)
+            {
+                od.Status = "Delivered";
+                if (!string.IsNullOrEmpty(proofUrl)) od.ProofImage = proofUrl;
+                if (!string.IsNullOrEmpty(deliveredBy)) od.DeliveredBy = deliveredBy;
+            }
+
+            await _context.SaveChangesAsync();
+
+            await _hubContext.Clients.All.SendAsync("OrderStatusUpdated", batchId, "Completed");
+            await _hubContext.Clients.All.SendAsync("OrderUpdated");
+
+            return Ok(new { batchId, status = "Delivered", proofImage = proofUrl, deliveredBy });
+        }
+
+        // 7. Receptionist / Manager Order Audit History with Proof Photos
+        [HttpGet("all-history")]
+        public async Task<IActionResult> GetAllOrderAuditHistory()
+        {
+            var allDetails = await _context.OrderDetails
+                .Include(od => od.MenuItem)
+                .Include(od => od.Order!)
+                    .ThenInclude(o => o.Tent!)
+                        .ThenInclude(t => t.Zone)
+                .Include(od => od.Order!)
+                    .ThenInclude(o => o.Booking)
+                .Where(od => od.Order != null)
+                .OrderByDescending(od => od.CreatedAt)
+                .ToListAsync();
+
+            var auditBatches = allDetails
+                .GroupBy(od => od.BatchId ?? od.Id.ToString())
+                .Select(g => {
+                    var first = g.First();
+                    var tentObj = first.Order?.Tent;
+                    var bookingObj = first.Order?.Booking;
+
+                    string rZone = tentObj?.Zone?.Name ?? "";
+                    string rTent = tentObj?.Name ?? "";
+                    bool isDiningTable = (tentObj?.Zone?.ZoneType == "DiningTable") || 
+                                          (!string.IsNullOrEmpty(rZone) && (rZone.Contains("Bàn") || rZone.Contains("ẩm thực") || rZone.Contains("Ẩm thực"))) ||
+                                          rTent.StartsWith("Bàn");
+
+                    string tFormatted = rTent.StartsWith("Lều") || rTent.StartsWith("Bàn") 
+                        ? rTent 
+                        : (isDiningTable ? $"Bàn {rTent}" : $"Lều {rTent}");
+                    string zFormatted = (!string.IsNullOrEmpty(rZone) && !rZone.StartsWith("Khu")) ? $"Khu {rZone}" : rZone;
+                    string locName = !string.IsNullOrEmpty(zFormatted) ? $"{zFormatted} - {tFormatted}" : tFormatted;
+
+                    return new
+                    {
+                        batchId = first.BatchId ?? first.Id.ToString(),
+                        orderId = first.OrderId,
+                        status = first.Status,
+                        rejectReason = g.FirstOrDefault(od => !string.IsNullOrEmpty(od.RejectReason))?.RejectReason,
+                        deliveredBy = g.FirstOrDefault(od => !string.IsNullOrEmpty(od.DeliveredBy))?.DeliveredBy,
+                        proofImage = g.FirstOrDefault(od => !string.IsNullOrEmpty(od.ProofImage))?.ProofImage,
+                        createdAt = g.Min(od => od.CreatedAt),
+                        locationName = locName,
+                        customerName = bookingObj?.CustomerName ?? "Khách hàng",
+                        totalBatchAmount = g.Sum(od => od.Quantity * od.UnitPrice),
+                        items = g.Select(od => new {
+                            id = od.Id,
+                            name = od.MenuItem?.Name ?? "Món ăn",
+                            quantity = od.Quantity,
+                            unitPrice = od.UnitPrice,
+                            note = od.Note,
+                            status = od.Status
+                        }).ToList()
+                    };
+                })
+                .OrderByDescending(b => b.createdAt)
+                .Take(50)
+                .ToList();
+
+            return Ok(auditBatches);
         }
     }
 }

@@ -88,6 +88,20 @@ export default function CustomerHistoryPage() {
     });
   });
 
+  const handleCancelPendingOrder = async (detailId) => {
+    if (!window.confirm("Bạn có chắc chắn muốn hủy món này không?")) return;
+
+    try {
+      const res = await axios.put(getApiUrl(`/api/Orders/${detailId}/cancel-by-customer`));
+      toast.success(res.data.message || "Đã hủy đợt gọi món thành công!");
+      fetchHistory();
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || "Không thể hủy đơn. Có thể Bếp đã tiếp nhận chế biến món này!";
+      toast.error(errorMsg);
+      fetchHistory();
+    }
+  };
+
   const getImageUrl = (url) => {
     if (!url) return 'https://images.unsplash.com/photo-1598514982205-f36b96d1e8d4?auto=format&fit=crop&q=80&w=200';
     if (url.includes('/uploads/')) return getApiUrl(url.substring(url.indexOf('/uploads/')));
@@ -128,14 +142,19 @@ export default function CustomerHistoryPage() {
       ) : (
         <div className="space-y-6">
           
-          {/* TAB 1: ĐÃ ĐẶT - CHỜ XỬ LÝ (Pending) */}
+          {/* TAB 1: ĐÃ ĐẶT - CHỜ XỬ LÝ (Pending - Có Thể Hủy) */}
           {pendingItems.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-xs font-black tracking-wider text-amber-800 uppercase flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
-                <Clock size={14} className="text-amber-600" />
-                1. ĐÃ ĐẶT (CHỜ LỄ TÂN/BẾP DUYỆT)
-              </h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-xs font-black tracking-wider text-amber-800 uppercase flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
+                  <Clock size={14} className="text-amber-600" />
+                  1. ĐÃ ĐẶT (CHỜ BẾP XÁC NHẬN)
+                </h3>
+                <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                  Có thể hủy khi Bếp chưa làm
+                </span>
+              </div>
 
               <div className="space-y-2.5">
                 {pendingItems.map(item => (
@@ -148,11 +167,19 @@ export default function CustomerHistoryPage() {
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-slate-800 text-sm truncate">{item.name}</h4>
                       <p className="text-[11px] text-amber-700 font-bold flex items-center gap-1 mt-0.5">
-                        🕒 Chờ nhận đơn ({getTimeAgo(item.createdAt)})
+                        🕒 Chờ Bếp nhận ({getTimeAgo(item.createdAt)})
                       </p>
                     </div>
-                    <div className="w-8 h-8 rounded-lg bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
-                      x{item.quantity}
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      <div className="w-7 h-7 rounded-lg bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
+                        x{item.quantity}
+                      </div>
+                      <button
+                        onClick={() => handleCancelPendingOrder(item.id)}
+                        className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-black rounded-lg transition-all active:scale-95"
+                      >
+                        🔴 Hủy Đơn
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -160,14 +187,19 @@ export default function CustomerHistoryPage() {
             </div>
           )}
 
-          {/* TAB 2: ĐANG CHUẨN BỊ (Preparing / Ready) */}
+          {/* TAB 2: ĐANG CHUẨN BỊ (Preparing / Ready - Khóa Hủy) */}
           {preparingItems.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-xs font-black tracking-wider text-blue-800 uppercase flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
-                <ChefHat size={14} className="text-blue-600" />
-                2. ĐANG CHUẨN BỊ (BẾP ĐANG LÀM)
-              </h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-xs font-black tracking-wider text-blue-800 uppercase flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
+                  <ChefHat size={14} className="text-blue-600" />
+                  2. BẾP ĐANG LÀM MÓN
+                </h3>
+                <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                  🔒 Khóa hủy đơn
+                </span>
+              </div>
 
               <div className="space-y-2.5">
                 {preparingItems.map(item => (

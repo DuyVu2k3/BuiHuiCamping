@@ -64,8 +64,18 @@ export default function ReceptionistLayout() {
 
       let dateRangeStr = '';
       if (checkIn && checkOut) {
-        const inStr = new Date(checkIn).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
-        const outStr = new Date(checkOut).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+        const formatNotifDate = (raw) => {
+          if (!raw) return '';
+          if (typeof raw === 'string' && raw.includes('T')) {
+            const parts = raw.split('T');
+            const dStr = parts[0].split('-').reverse().join('/');
+            const tStr = parts[1].replace('Z', '').substring(0, 5);
+            return `${tStr} ${dStr}`;
+          }
+          return new Date(raw).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+        };
+        const inStr = formatNotifDate(checkIn);
+        const outStr = formatNotifDate(checkOut);
         dateRangeStr = `\n📅 Lịch ở: ${inStr} ➔ ${outStr}`;
       }
 

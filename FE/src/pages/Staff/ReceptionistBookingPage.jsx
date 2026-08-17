@@ -36,6 +36,41 @@ import toast from "react-hot-toast";
 import { getApiUrl } from "../../apiConfig";
 import signalRService from "../../services/signalrService";
 
+const formatBookingDateTime = (raw) => {
+  if (!raw) return { time: '--:--', date: '--/--/----', full: 'N/A' };
+  if (typeof raw === 'string') {
+    const cleanStr = raw.trim();
+    if (cleanStr.includes('T')) {
+      const parts = cleanStr.split('T');
+      const datePart = parts[0];
+      const timePart = parts[1].replace('Z', '').split('.')[0];
+      
+      const dParts = datePart.split('-');
+      if (dParts.length === 3) {
+        const year = dParts[0];
+        const month = dParts[1];
+        const day = dParts[2];
+        const tParts = timePart.split(':');
+        const hour = tParts[0] ? tParts[0].padStart(2, '0') : '00';
+        const minute = tParts[1] ? tParts[1].padStart(2, '0') : '00';
+
+        const timeFormatted = `${hour}:${minute}`;
+        const dateFormatted = `${day}/${month}/${year}`;
+        return {
+          time: timeFormatted,
+          date: dateFormatted,
+          full: `${timeFormatted} - ${dateFormatted}`
+        };
+      }
+    }
+  }
+  let d = new Date(raw);
+  if (isNaN(d.getTime())) return { time: '--:--', date: '--/--/----', full: 'N/A' };
+  const timeFormatted = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const dateFormatted = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return { time: timeFormatted, date: dateFormatted, full: `${timeFormatted} - ${dateFormatted}` };
+};
+
 const HOURS_24 = Array.from({ length: 24 }, (_, i) =>
   i.toString().padStart(2, "0"),
 );
@@ -160,8 +195,18 @@ export default function ReceptionistBookingPage() {
   }, [selectedTents]);
 
   const submitBooking = async () => {
-    if (!bookingForm.customerName || !bookingForm.phoneNumber)
-      return toast.error("Vui lòng nhập Tên và Số Điện Thoại của khách!");
+    const cleanName = (bookingForm.customerName || '').trim();
+    const cleanPhone = (bookingForm.phoneNumber || '').trim();
+
+    const nameRegex = /^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼỀỀỂưăạảấầnẩẫậắằẳẵặẹẻẽềềểỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪễệỉịọỏốồổỗộớờởỡợụủứừÝỲỸỶỊýỳỹỷị\s]{2,50}$/;
+    if (!cleanName || /\d/.test(cleanName) || cleanName.length < 2 || !nameRegex.test(cleanName)) {
+      return toast.error("Họ & Tên không hợp lệ! Vui lòng nhập bằng chữ cái đàng hoàng (từ 2 ký tự trở lên, không chứa số).");
+    }
+
+    const phoneRegex = /^0[0-9]{9}$/;
+    if (!cleanPhone || !phoneRegex.test(cleanPhone)) {
+      return toast.error("Số điện thoại không hợp lệ! Vui lòng nhập đúng 10 chữ số (bắt đầu bằng số 0).");
+    }
 
     try {
       const inStr = `${bookingForm.checkInDate || filterCheckIn}T${bookingForm.checkInTime || "14:00"}:00`;
@@ -1431,71 +1476,45 @@ export default function ReceptionistBookingPage() {
                     </div>
 
                     {/* Detailed Check-in / Check-out Schedule Grid */}
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {/* Check-in Card */}
-                      <div className="bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/80 space-y-1">
-                        <div className="flex items-center gap-1 text-[10px] font-black text-emerald-800 uppercase tracking-wider">
-                          <Calendar size={12} className="text-emerald-700" />
-                          <span>Check-in</span>
-                        </div>
-                        <div className="flex items-baseline gap-1.5 flex-wrap">
-                          <span className="text-sm font-black text-slate-900 leading-none">
-                            {activeActionBooking.checkInDate
-                              ? new Date(
-                                  activeActionBooking.checkInDate,
-                                ).toLocaleTimeString("vi-VN", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  hour12: false,
-                                })
-                              : "--:--"}
-                          </span>
-                          <span className="text-[11px] font-bold text-slate-600">
-                            {activeActionBooking.checkInDate
-                              ? new Date(
-                                  activeActionBooking.checkInDate,
-                                ).toLocaleDateString("vi-VN", {
-                                  day: "2-digit",
-                                  month: "2-digit",
-                                  year: "numeric",
-                                })
-                              : "--/--/----"}
-                          </span>
-                        </div>
-                      </div>
+                    {(() => {
+                      const inObj = formatBookingDateTime(activeActionBooking.checkInDate);
+                      const outObj = formatBookingDateTime(activeActionBooking.checkOutDate);
+                      return (
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          {/* Check-in Card */}
+                          <div className="bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/80 space-y-1">
+                            <div className="flex items-center gap-1 text-[10px] font-black text-emerald-800 uppercase tracking-wider">
+                              <Calendar size={12} className="text-emerald-700" />
+                              <span>Check-in</span>
+                            </div>
+                            <div className="flex items-baseline gap-1.5 flex-wrap">
+                              <span className="text-sm font-black text-slate-900 leading-none">
+                                {inObj.time}
+                              </span>
+                              <span className="text-[11px] font-bold text-slate-600">
+                                {inObj.date}
+                              </span>
+                            </div>
+                          </div>
 
-                      {/* Check-out Card */}
-                      <div className="bg-amber-50/80 p-2.5 rounded-xl border border-amber-200/80 space-y-1">
-                        <div className="flex items-center gap-1 text-[10px] font-black text-amber-900 uppercase tracking-wider">
-                          <Calendar size={12} className="text-amber-700" />
-                          <span>Check-out</span>
+                          {/* Check-out Card */}
+                          <div className="bg-amber-50/80 p-2.5 rounded-xl border border-amber-200/80 space-y-1">
+                            <div className="flex items-center gap-1 text-[10px] font-black text-amber-900 uppercase tracking-wider">
+                              <Calendar size={12} className="text-amber-700" />
+                              <span>Check-out</span>
+                            </div>
+                            <div className="flex items-baseline gap-1.5 flex-wrap">
+                              <span className="text-sm font-black text-slate-900 leading-none">
+                                {activeActionBooking.bookingType === 'Hourly' ? 'Đang ở theo giờ' : outObj.time}
+                              </span>
+                              <span className="text-[11px] font-bold text-slate-600">
+                                {activeActionBooking.bookingType === 'Hourly' ? 'Tính giờ realtime' : outObj.date}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-baseline gap-1.5 flex-wrap">
-                          <span className="text-sm font-black text-slate-900 leading-none">
-                            {activeActionBooking.checkOutDate
-                              ? new Date(
-                                  activeActionBooking.checkOutDate,
-                                ).toLocaleTimeString("vi-VN", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  hour12: false,
-                                })
-                              : "--:--"}
-                          </span>
-                          <span className="text-[11px] font-bold text-slate-600">
-                            {activeActionBooking.checkOutDate
-                              ? new Date(
-                                  activeActionBooking.checkOutDate,
-                                ).toLocaleDateString("vi-VN", {
-                                  day: "2-digit",
-                                  month: "2-digit",
-                                  year: "numeric",
-                                })
-                              : "--/--/----"}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
 
                     {/* Actual Check-in / Check-out (If Available) */}
                     {(activeActionBooking.actualCheckInDate ||

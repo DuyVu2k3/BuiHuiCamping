@@ -39,12 +39,14 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
   if (!isOpen) return null;
 
   const handleConfirmCheckout = async () => {
-    if (!billData || !billData.bookingId) return;
+    if (!billData) return;
     setCheckingOut(true);
 
     try {
-      await axios.put(getApiUrl(`/api/Bookings/${billData.bookingId}/checkout`));
-      toast.success("Đã hoàn tất thanh toán Master Bill & Trả lều thành công!");
+      if (billData.bookingId) {
+        await axios.put(getApiUrl(`/api/Bookings/${billData.bookingId}/checkout`));
+      }
+      toast.success(isTable ? "Đã hoàn tất thanh toán Master Bill & Trả bàn thành công!" : "Đã hoàn tất thanh toán Master Bill & Trả lều thành công!");
       if (onCheckoutSuccess) onCheckoutSuccess(billData.bookingId);
       onClose();
     } catch (err) {
@@ -59,6 +61,17 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
     window.print();
   };
 
+  const rawLocName = billData?.locationName || billData?.tent?.locationName || tentName || "";
+  const isTable = rawLocName.toLowerCase().includes("bàn") || 
+                  rawLocName.toLowerCase().includes("ẩm thực") || 
+                  (billData?.tent?.tentType && billData.tent.tentType.toLowerCase().includes("bàn")) ||
+                  (billData?.customerName && billData.customerName.toLowerCase().includes("bàn"));
+
+  let displayCustomerName = billData?.customerName || "Khách hàng";
+  if (isTable && displayCustomerName.startsWith("Khách Khu ẩm thực.")) {
+    displayCustomerName = displayCustomerName.replace("Khách Khu ẩm thực.", "Khách Ăn Tại ");
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh] print:max-h-none print:shadow-none print:w-full print:rounded-none">
@@ -71,7 +84,9 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
             </div>
             <div>
               <h3 className="font-extrabold text-base tracking-tight">HÓA ĐƠN MASTER BILL</h3>
-              <p className="text-[11px] text-emerald-200/80 font-medium">Tổng hợp chi phí Thuê lều & Dịch vụ</p>
+              <p className="text-[11px] text-emerald-200/80 font-medium">
+                {isTable ? "Tổng hợp chi phí Đồ ăn, Dịch vụ & Phí bàn" : "Tổng hợp chi phí Thuê lều & Dịch vụ"}
+              </p>
             </div>
           </div>
 
@@ -93,17 +108,19 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
           ) : !billData ? (
             <div className="text-center py-12 space-y-3">
               <AlertCircle size={40} className="mx-auto text-amber-500" />
-              <p className="text-sm font-bold text-slate-700">Chưa có thông tin hóa đơn cho lều này.</p>
+              <p className="text-sm font-bold text-slate-700">Chưa có thông tin hóa đơn cho vị trí này.</p>
             </div>
           ) : (
             <>
               {/* Receipt Branding / Printable Header */}
               <div className="text-center border-b border-slate-200 pb-4">
                 <h1 className="text-2xl font-black text-[#1B4D3E]" style={{ fontFamily: "'Dancing Script', cursive" }}>Bùi Hui Camping</h1>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Hóa Đơn Thanh Toán / Master Invoice</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">
+                  {isTable ? "Hóa Đơn Dịch Vụ Bàn Ăn / Restaurant Invoice" : "Hóa Đơn Thanh Toán / Master Invoice"}
+                </p>
                 
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#1B4D3E]/10 text-[#1B4D3E] rounded-full text-xs font-black mt-2">
-                  <span>📍 {billData.locationName || billData.tent?.locationName} {billData.tentsCount > 1 ? `(${billData.tentsCount} Lều)` : ''}</span>
+                  <span>{isTable ? '🍽️' : '📍'} {billData.locationName || billData.tent?.locationName} {billData.tentsCount > 1 ? `(${billData.tentsCount} Lều)` : ''}</span>
                 </div>
               </div>
 
@@ -111,9 +128,9 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
               <div className="bg-white p-4 rounded-2xl border border-slate-200/80 space-y-2.5 text-xs">
                 <div className="flex justify-between items-center text-slate-700">
                   <span className="font-semibold text-slate-500 flex items-center gap-1.5">
-                    <User size={14} className="text-[#1B4D3E]" /> Khách đại diện:
+                    <User size={14} className="text-[#1B4D3E]" /> {isTable ? "Khách dùng bàn:" : "Khách đại diện:"}
                   </span>
-                  <span className="font-extrabold text-slate-800">{billData.customerName}</span>
+                  <span className="font-extrabold text-slate-800">{displayCustomerName}</span>
                 </div>
 
                 <div className="flex justify-between items-center text-slate-700">
@@ -123,49 +140,74 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                   <span className="font-bold text-slate-800">{billData.phoneNumber || "N/A"}</span>
                 </div>
 
-                {/* Scheduled Check-in / Check-out */}
-                <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                  <div className="flex justify-between items-center text-slate-700">
-                    <span className="font-semibold text-slate-500 flex items-center gap-1.5">
-                      <Calendar size={14} className="text-emerald-600" /> Lịch Check-in đăng ký:
-                    </span>
-                    <span className="font-extrabold text-slate-800">
-                      {billData.checkInDate ? new Date(billData.checkInDate.endsWith('Z') ? billData.checkInDate : billData.checkInDate + 'Z').toLocaleString('vi-VN') : 'N/A'}
-                    </span>
-                  </div>
-
-                  {billData.checkOutDate && (
+                {/* Table vs Tent Specific Time Info */}
+                {isTable ? (
+                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
                     <div className="flex justify-between items-center text-slate-700">
                       <span className="font-semibold text-slate-500 flex items-center gap-1.5">
-                        <Calendar size={14} className="text-emerald-600" /> Lịch Check-out đăng ký:
+                        <Clock size={14} className="text-emerald-600" /> Thời gian vào bàn:
                       </span>
                       <span className="font-extrabold text-slate-800">
-                        {new Date(billData.checkOutDate.endsWith('Z') ? billData.checkOutDate : billData.checkOutDate + 'Z').toLocaleString('vi-VN')}
+                        {billData.checkInDate ? new Date(billData.checkInDate.endsWith('Z') ? billData.checkInDate : billData.checkInDate + 'Z').toLocaleString('vi-VN') : 'Vừa vào bàn'}
                       </span>
                     </div>
-                  )}
-                </div>
 
-                {/* Actual Check-in / Check-out */}
-                <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                  <div className="flex justify-between items-center text-slate-700">
-                    <span className="font-semibold text-slate-500 flex items-center gap-1.5">
-                      <Clock size={14} className="text-[#1B4D3E]" /> Thực tế nhận lều:
-                    </span>
-                    <span className="font-extrabold text-[#1B4D3E]">
-                      {billData.actualCheckInDate ? new Date(billData.actualCheckInDate.endsWith('Z') ? billData.actualCheckInDate : billData.actualCheckInDate + 'Z').toLocaleString('vi-VN') : "Đã nhận khi Check-in"}
-                    </span>
+                    <div className="flex justify-between items-center text-slate-700">
+                      <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                        <Clock size={14} className="text-rose-600" /> Trạng thái bàn:
+                      </span>
+                      <span className="font-extrabold text-rose-700">
+                        {billData.actualCheckOutDate ? new Date(billData.actualCheckOutDate.endsWith('Z') ? billData.actualCheckOutDate : billData.actualCheckOutDate + 'Z').toLocaleString('vi-VN') : (billData.status === 'CheckedOut' ? 'Đã trả bàn' : 'Đang sử dụng bàn / Chưa tính tiền')}
+                      </span>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    {/* Scheduled Check-in / Check-out */}
+                    <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                      <div className="flex justify-between items-center text-slate-700">
+                        <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                          <Calendar size={14} className="text-emerald-600" /> Lịch Check-in đăng ký:
+                        </span>
+                        <span className="font-extrabold text-slate-800">
+                          {billData.checkInDate ? new Date(billData.checkInDate.endsWith('Z') ? billData.checkInDate : billData.checkInDate + 'Z').toLocaleString('vi-VN') : 'N/A'}
+                        </span>
+                      </div>
 
-                  <div className="flex justify-between items-center text-slate-700">
-                    <span className="font-semibold text-slate-500 flex items-center gap-1.5">
-                      <Clock size={14} className="text-rose-600" /> Thực tế trả lều:
-                    </span>
-                    <span className="font-extrabold text-rose-700">
-                      {billData.actualCheckOutDate ? new Date(billData.actualCheckOutDate.endsWith('Z') ? billData.actualCheckOutDate : billData.actualCheckOutDate + 'Z').toLocaleString('vi-VN') : (billData.status === 'CheckedOut' ? 'Đã trả lều' : 'Đang sử dụng / Chưa trả')}
-                    </span>
-                  </div>
-                </div>
+                      {billData.checkOutDate && (
+                        <div className="flex justify-between items-center text-slate-700">
+                          <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                            <Calendar size={14} className="text-emerald-600" /> Lịch Check-out đăng ký:
+                          </span>
+                          <span className="font-extrabold text-slate-800">
+                            {new Date(billData.checkOutDate.endsWith('Z') ? billData.checkOutDate : billData.checkOutDate + 'Z').toLocaleString('vi-VN')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actual Check-in / Check-out */}
+                    <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                      <div className="flex justify-between items-center text-slate-700">
+                        <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                          <Clock size={14} className="text-[#1B4D3E]" /> Thực tế nhận lều:
+                        </span>
+                        <span className="font-extrabold text-[#1B4D3E]">
+                          {billData.actualCheckInDate ? new Date(billData.actualCheckInDate.endsWith('Z') ? billData.actualCheckInDate : billData.actualCheckInDate + 'Z').toLocaleString('vi-VN') : "Đã nhận khi Check-in"}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center text-slate-700">
+                        <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                          <Clock size={14} className="text-rose-600" /> Thực tế trả lều:
+                        </span>
+                        <span className="font-extrabold text-rose-700">
+                          {billData.actualCheckOutDate ? new Date(billData.actualCheckOutDate.endsWith('Z') ? billData.actualCheckOutDate : billData.actualCheckOutDate + 'Z').toLocaleString('vi-VN') : (billData.status === 'CheckedOut' ? 'Đã trả lều' : 'Đang sử dụng / Chưa trả')}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Itemized Table Breakdown */}
@@ -176,21 +218,21 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                 </div>
 
                 <div className="divide-y divide-slate-100 text-xs">
-                  {/* 1. Tent Rental Fee Breakdown */}
+                  {/* 1. Tent / Table Fee Breakdown */}
                   <div className="p-4 bg-emerald-50/30 space-y-2">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                        <Tent size={16} className="text-[#1B4D3E]" />
+                        {isTable ? <ShoppingBag size={16} className="text-amber-700" /> : <Tent size={16} className="text-[#1B4D3E]" />}
                         <div>
                           <p className="font-bold text-slate-800">
-                            Tiền Thuê Lều Trải Nghiệm {billData.tentsCount > 1 ? `(${billData.tentsCount} Lều)` : ''}
+                            {isTable ? "Dịch Vụ & Sử Dụng Bàn Ăn" : `Tiền Thuê Lều Trải Nghiệm ${billData.tentsCount > 1 ? `(${billData.tentsCount} Lều)` : ''}`}
                           </p>
                         </div>
                       </div>
                       <span className="font-extrabold text-[#1B4D3E]">{billData.tentRentalFee?.toLocaleString('vi-VN')}đ</span>
                     </div>
 
-                    {/* Detailed List of Tents in Booking */}
+                    {/* Detailed List of Tents / Tables in Booking */}
                     {billData.tents && billData.tents.length > 0 ? (
                       <div className="pl-6 pt-1 space-y-1 border-t border-emerald-100/60 text-[11px] text-slate-600">
                         {billData.tents.map((t, index) => (
@@ -228,7 +270,7 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
               {/* Financial Totals Summary */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200/80 space-y-3">
                 <div className="flex justify-between items-center text-xs text-slate-600">
-                  <span>Tiền Thuê Lều:</span>
+                  <span>{isTable ? "Phí Sử Dụng Bàn Ăn:" : "Tiền Thuê Lều:"}</span>
                   <span className="font-bold">{billData.tentRentalFee?.toLocaleString('vi-VN')}đ</span>
                 </div>
 
@@ -242,10 +284,12 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                   <span>{billData.grandTotal?.toLocaleString('vi-VN')}đ</span>
                 </div>
 
-                <div className="flex justify-between items-center text-xs text-rose-600 font-semibold bg-rose-50/60 p-2.5 rounded-xl border border-rose-100">
-                  <span>Trừ Tiền Đặt Cọc Trước Đó:</span>
-                  <span className="font-black">-{billData.depositPaid?.toLocaleString('vi-VN')}đ</span>
-                </div>
+                {billData.depositPaid > 0 && (
+                  <div className="flex justify-between items-center text-xs text-rose-600 font-semibold bg-rose-50/60 p-2.5 rounded-xl border border-rose-100">
+                    <span>Trừ Tiền Đặt Cọc Trước Đó:</span>
+                    <span className="font-black">-{billData.depositPaid?.toLocaleString('vi-VN')}đ</span>
+                  </div>
+                )}
 
                 <div className="flex justify-between items-center bg-[#1B4D3E] text-white p-4 rounded-xl shadow-lg">
                   <div>
@@ -278,12 +322,12 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
               {checkingOut ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  <span>Đang xử lý Checkout...</span>
+                  <span>Đang xử lý...</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 size={16} className="text-emerald-300" />
-                  <span>Xác Nhận Thanh Toán & Trả Lều</span>
+                  <span>{isTable ? "Xác Nhận Thanh Toán & Trả Bàn" : "Xác Nhận Thanh Toán & Trả Lều"}</span>
                 </>
               )}
             </button>

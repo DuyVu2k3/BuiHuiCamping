@@ -137,7 +137,22 @@ using (var scope = app.Services.CreateScope())
         UPDATE [Bookings] SET [Note] = '' WHERE [Note] IS NULL;
 
         UPDATE [Tents] SET [HourlyPriceFirstHour] = 100000 WHERE [HourlyPriceFirstHour] IS NULL;
-        UPDATE [Tents] SET [HourlyPriceExtraHour] = 50000 WHERE [HourlyPriceExtraHour] IS NULL;";
+        UPDATE [Tents] SET [HourlyPriceExtraHour] = 50000 WHERE [HourlyPriceExtraHour] IS NULL;
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('OrderDetails') AND name = 'RejectReason')
+        BEGIN
+            ALTER TABLE [OrderDetails] ADD [RejectReason] NVARCHAR(MAX) NULL;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('OrderDetails') AND name = 'DeliveredBy')
+        BEGIN
+            ALTER TABLE [OrderDetails] ADD [DeliveredBy] NVARCHAR(200) NULL;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('OrderDetails') AND name = 'ProofImage')
+        BEGIN
+            ALTER TABLE [OrderDetails] ADD [ProofImage] NVARCHAR(MAX) NULL;
+        END";
 
         context.Database.ExecuteSqlRaw(sql);
     }
