@@ -34,7 +34,7 @@ export default function WaiterLayout() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto pt-24 pb-28 bg-[#F5F5F0]">
+      <main className="flex-1 overflow-y-auto pt-24 pb-6 bg-[#F5F5F0]">
         <Outlet />
       </main>
 

@@ -152,6 +152,11 @@ using (var scope = app.Services.CreateScope())
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('OrderDetails') AND name = 'ProofImage')
         BEGIN
             ALTER TABLE [OrderDetails] ADD [ProofImage] NVARCHAR(MAX) NULL;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'MergedParentTentId')
+        BEGIN
+            ALTER TABLE [Tents] ADD [MergedParentTentId] INT NULL;
         END";
 
         context.Database.ExecuteSqlRaw(sql);

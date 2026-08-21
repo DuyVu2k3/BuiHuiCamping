@@ -229,13 +229,45 @@ export default function OnlineBookingPage() {
     };
   });
 
-  const effectiveZones = zones.map((z) => ({
-    ...z,
-    tents: (z.tents || []).map((t) => {
-      const et = effectiveTents.find((item) => item.id === t.id);
-      return et || t;
-    }),
-  }));
+  // Helper to identify dining table tents/zones
+  const isTableTent = (tent) => {
+    if (!tent) return false;
+    const zType = tent.zone?.zoneType;
+    const zName = (tent.zone?.name || "").toLowerCase();
+    const tName = (tent.name || "").toLowerCase();
+
+    return (
+      zType === "DiningTable" ||
+      zName.includes("bàn") ||
+      zName.includes("ẩm thực") ||
+      zName.includes("nhà hàng") ||
+      zName.includes("ăn uống") ||
+      tName.includes("bàn")
+    );
+  };
+
+  // Filter out dining tables so guest online booking map ONLY displays camping tents
+  const campingOnlyTents = effectiveTents.filter((t) => !isTableTent(t));
+
+  const campingOnlyZones = zones
+    .filter((z) => {
+      const zType = z.zoneType;
+      const zName = (z.name || "").toLowerCase();
+      return (
+        zType !== "DiningTable" &&
+        !zName.includes("bàn") &&
+        !zName.includes("ẩm thực") &&
+        !zName.includes("nhà hàng") &&
+        !zName.includes("ăn uống")
+      );
+    })
+    .map((z) => ({
+      ...z,
+      tents: (z.tents || [])
+        .map((t) => campingOnlyTents.find((item) => item.id === t.id) || t)
+        .filter((t) => !isTableTent(t)),
+    }))
+    .filter((z) => (z.tents || []).length > 0);
 
   const handleSelectTent = (tent) => {
     if (tent.status !== "Available") {
@@ -574,18 +606,18 @@ export default function OnlineBookingPage() {
           </div>
         ) : viewMode === "map" ? (
           <CampsiteMap
-            tents={effectiveTents}
-            zones={effectiveZones}
+            tents={campingOnlyTents}
+            zones={campingOnlyZones}
             selectedTentIds={selectedTents.map((t) => t.id)}
             onSelectTent={handleSelectTent}
           />
         ) : (
           /* Zone-Grouped Grid View */
           <div className="space-y-10">
-            {effectiveZones.map((zone) => {
+            {campingOnlyZones.map((zone) => {
               const zoneTents = (zone.tents || []).map((t) => {
                 const liveTent =
-                  effectiveTents.find((et) => et.id === t.id) || t;
+                  campingOnlyTents.find((et) => et.id === t.id) || t;
                 return liveTent;
               });
 
@@ -765,7 +797,7 @@ export default function OnlineBookingPage() {
                 {/* Tent Image Preview */}
                 <div className="relative aspect-video rounded-2xl overflow-hidden mb-6 shadow-md border border-slate-100">
                   <img
-                    src="https://lh3.googleusercontent.com/gps-cs-s/AHRPTWmmwlohal5Ljr4cYstGs6k81HvmZbvhBXtN1zTl1QFLf0-HyX0HuaViTpbfIaABLgPGKK9s8u3nmha3RNeo9csLgXt1ZcHqfgy5-_8B6yYHEO1-uw2yXLzJXOx3mjnAaA6og8F_ab7i9kK6=s1360-w1360-h1020-rw"
+                    src="https://images.unsplash.com/photo-1478131143081-80f7f84ca84d?auto=format&fit=crop&q=80&w=800"
                     alt="Bùi Hui Camping Tents"
                     className="w-full h-full object-cover"
                   />

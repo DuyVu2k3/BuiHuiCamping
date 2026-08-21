@@ -141,19 +141,106 @@ namespace BuiHuiCamping.API.Controllers
                             tentEntity.Zone.Name.Contains("Ăn uống", StringComparison.OrdinalIgnoreCase)
                            ));
 
-            // Tables are ALWAYS active & unlocked for dining customers without needing a booking check-in!
-            bool isActive = isTable || tentEntity.IsQrUnlocked || tentEntity.Status.Equals("Occupied", StringComparison.OrdinalIgnoreCase) || (activeBooking != null && activeBooking.IsQrUnlocked);
-            bool isUnlocked = isTable || tentEntity.IsQrUnlocked || (activeBooking?.IsQrUnlocked ?? false);
+            // Dining tables are active & unlocked ONLY when the table is opened (IsQrUnlocked || Status == Occupied || MergedParentTentId != null)!
+            bool isTableOpen = tentEntity.IsQrUnlocked || tentEntity.Status.Equals("Occupied", StringComparison.OrdinalIgnoreCase) || tentEntity.MergedParentTentId.HasValue;
+            bool isActive = isTable ? isTableOpen : (tentEntity.IsQrUnlocked || tentEntity.Status.Equals("Occupied", StringComparison.OrdinalIgnoreCase) || (activeBooking != null && activeBooking.IsQrUnlocked));
+            bool isUnlocked = isTable ? isTableOpen : (tentEntity.IsQrUnlocked || (activeBooking?.IsQrUnlocked ?? false));
 
             return Ok(new
             {
                 id = tentEntity.Id,
                 name = tentEntity.Name,
-                status = isTable ? "Table" : tentEntity.Status,
+                status = isTable ? (isTableOpen ? "Occupied" : "Available") : tentEntity.Status,
                 isTable = isTable,
                 isQrUnlocked = isUnlocked,
+                mergedParentTentId = tentEntity.MergedParentTentId,
                 active = isActive
             });
+        }
+
+        [HttpPost("{id}/open-table")]
+        public async Task<IActionResult> OpenTable(int id)
+        {
+            var tent = await _context.Tents.FindAsync(id);
+            if (tent == null) return NotFound("Không tìm thấy bàn.");
+
+            tent.Status = "Occupied";
+            tent.IsQrUnlocked = true;
+
+            await _context.SaveChangesAsync();
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            return Ok(new { id = tent.Id, name = tent.Name, status = tent.Status, isQrUnlocked = tent.IsQrUnlocked, message = $"Đã MỞ BÀN {tent.Name} thành công!" });
+        }
+
+        [HttpPost("{id}/close-table")]
+        public async Task<IActionResult> CloseTable(int id)
+        {
+            var tent = await _context.Tents.FindAsync(id);
+            if (tent == null) return NotFound("Không tìm thấy bàn.");
+
+            tent.Status = "Available";
+            tent.IsQrUnlocked = false;
+            tent.MergedParentTentId = null;
+
+            // Also unmerge any child tables linked to this master table
+            var childTables = await _context.Tents.Where(t => t.MergedParentTentId == id).ToListAsync();
+            foreach (var child in childTables)
+            {
+                child.MergedParentTentId = null;
+                child.Status = "Available";
+                child.IsQrUnlocked = false;
+            }
+
+            await _context.SaveChangesAsync();
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            return Ok(new { id = tent.Id, name = tent.Name, status = tent.Status, isQrUnlocked = tent.IsQrUnlocked, message = $"Đã ĐÓNG BÀN & trả bàn {tent.Name} thành công!" });
+        }
+
+        [HttpPost("merge-tables")]
+        public async Task<IActionResult> MergeTables([FromBody] MergeTablesDto dto)
+        {
+            if (dto.SourceTentId == dto.TargetTentId)
+                return BadRequest("Không thể ghép bàn với chính nó.");
+
+            var sourceTent = await _context.Tents.FindAsync(dto.SourceTentId);
+            var targetTent = await _context.Tents.FindAsync(dto.TargetTentId);
+
+            if (sourceTent == null || targetTent == null)
+                return NotFound("Không tìm thấy bàn nguồn hoặc bàn đích.");
+
+            // Set source table merged to target table
+            sourceTent.MergedParentTentId = targetTent.Id;
+            sourceTent.Status = "Occupied";
+            sourceTent.IsQrUnlocked = true;
+
+            // Ensure target table is also open
+            targetTent.Status = "Occupied";
+            targetTent.IsQrUnlocked = true;
+
+            await _context.SaveChangesAsync();
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+
+            return Ok(new
+            {
+                sourceTentId = sourceTent.Id,
+                sourceTentName = sourceTent.Name,
+                targetTentId = targetTent.Id,
+                targetTentName = targetTent.Name,
+                message = $"Đã ghép Bàn {sourceTent.Name} vào Bàn {targetTent.Name} thành công!"
+            });
+        }
+
+        [HttpPost("{id}/unmerge-table")]
+        public async Task<IActionResult> UnmergeTable(int id)
+        {
+            var tent = await _context.Tents.FindAsync(id);
+            if (tent == null) return NotFound("Không tìm thấy bàn.");
+
+            tent.MergedParentTentId = null;
+            await _context.SaveChangesAsync();
+
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            return Ok(new { id = tent.Id, message = $"Đã tách Bàn {tent.Name}!" });
         }
 
         [HttpPost("{id}/toggle-qr-lock")]
@@ -198,5 +285,11 @@ namespace BuiHuiCamping.API.Controllers
     {
         public string MapTop { get; set; } = string.Empty;
         public string MapLeft { get; set; } = string.Empty;
+    }
+
+    public class MergeTablesDto
+    {
+        public int SourceTentId { get; set; }
+        public int TargetTentId { get; set; }
     }
 }

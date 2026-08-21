@@ -187,6 +187,16 @@ namespace BuiHuiCamping.API.Controllers
 
             if (tent == null) return NotFound("Không tìm thấy Lều này trong hệ thống.");
 
+            // If table is merged into a parent table (e.g. Bàn 05 merged into Bàn 03), resolve to parent table
+            if (tent.MergedParentTentId.HasValue)
+            {
+                var parentTent = allTents.FirstOrDefault(t => t.Id == tent.MergedParentTentId.Value);
+                if (parentTent != null)
+                {
+                    tent = parentTent;
+                }
+            }
+
             var activeBooking = tent.Bookings.FirstOrDefault(b => b.Status == "Booked" || b.Status == "Occupied" || b.Status == "Pending");
             if (activeBooking == null)
             {

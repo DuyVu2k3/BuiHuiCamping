@@ -592,6 +592,16 @@ namespace BuiHuiCamping.API.Controllers
             {
                 tent.Status = "Available";
                 tent.IsQrUnlocked = false;
+                tent.MergedParentTentId = null;
+
+                // Reset any child merged tables linked to this master table
+                var childTables = await _context.Tents.Where(t => t.MergedParentTentId == tent.Id).ToListAsync();
+                foreach (var child in childTables)
+                {
+                    child.MergedParentTentId = null;
+                    child.Status = "Available";
+                    child.IsQrUnlocked = false;
+                }
             }
 
             foreach (var order in booking.Orders)

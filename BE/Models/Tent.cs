@@ -23,6 +23,9 @@ namespace BuiHuiCamping.API.Models
         // Foreign Key
         public int? ZoneId { get; set; }
 
+        // Foreign Key for Table Merging
+        public int? MergedParentTentId { get; set; }
+
         // Navigation Property
         public Zone? Zone { get; set; }
     }

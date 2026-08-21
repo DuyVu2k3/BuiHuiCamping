@@ -67,6 +67,7 @@ export default function CustomerLayout() {
   }
 
   if (!isActivated) {
+    const isTableEntity = tentName.toLowerCase().includes("bàn") || tentName.toLowerCase().includes("ẩm thực");
     return (
       <div className="flex flex-col h-[100dvh] max-w-md mx-auto bg-[#F5F5F0] p-6 text-center items-center justify-center space-y-6 shadow-2xl border-x border-slate-200/50">
         <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-3xl flex items-center justify-center shadow-xl animate-bounce border-2 border-rose-200">
@@ -74,21 +75,35 @@ export default function CustomerLayout() {
         </div>
         
         <div className="space-y-2">
-          <span className="text-[10px] font-extrabold bg-rose-500/10 text-rose-700 px-3 py-1 rounded-full uppercase tracking-wider">Mã QR Khóa</span>
-          <h2 className="text-2xl font-black text-slate-800">Lều Chưa Kích Hoạt</h2>
+          <span className="text-[10px] font-extrabold bg-rose-500/10 text-rose-700 px-3 py-1 rounded-full uppercase tracking-wider">
+            {isTableEntity ? "Mã QR Bàn Chưa Mở" : "Mã QR Lều Khóa"}
+          </span>
+          <h2 className="text-2xl font-black text-slate-800">
+            {isTableEntity ? "Bàn Chưa Được Mở" : "Lều Chưa Kích Hoạt"}
+          </h2>
           <p className="text-xs text-slate-600 leading-relaxed max-w-xs mx-auto">
-            Mã QR của Lều <span className="font-extrabold text-[#1B4D3E]">{tentName}</span> hiện chưa được mở quyền gọi món online.
+            Mã QR của <span className="font-extrabold text-[#1B4D3E]">{tentName}</span> hiện chưa được mở quyền gọi món online.
           </p>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 text-xs text-slate-600 space-y-2 shadow-sm text-left w-full">
           <div className="font-bold text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2">
-            <Info size={16} className="text-amber-500" /> Hướng dẫn mở khóa:
+            <Info size={16} className="text-amber-500" /> Hướng dẫn mở bàn:
           </div>
           <ul className="list-disc list-inside space-y-1.5 text-[11px] text-slate-600">
-            <li>Vui lòng liên hệ Lễ Tân để làm thủ tục nhận lều.</li>
-            <li>Lễ tân sẽ bấm <strong>Kích hoạt (Check-in)</strong> trên hệ thống.</li>
-            <li>Quét lại mã QR sau khi được kích hoạt.</li>
+            {isTableEntity ? (
+              <>
+                <li>Vui lòng liên hệ Nhân viên chạy bàn hoặc Lễ Tân để mở bàn.</li>
+                <li>Nhân viên sẽ bấm <strong>Mở Bàn {tentName}</strong> trên hệ thống.</li>
+                <li>Tải lại trang để bắt đầu gọi món trực tiếp về Bếp.</li>
+              </>
+            ) : (
+              <>
+                <li>Vui lòng liên hệ Lễ Tân để làm thủ tục nhận lều.</li>
+                <li>Lễ tân sẽ bấm <strong>Kích hoạt (Check-in)</strong> trên hệ thống.</li>
+                <li>Quét lại mã QR sau khi được kích hoạt.</li>
+              </>
+            )}
           </ul>
         </div>
 

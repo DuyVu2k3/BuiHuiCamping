@@ -1,24 +1,62 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, Clock, Flame, Info, BellRing, X, MapPin, User, LogOut } from 'lucide-react';
+import { CheckCircle2, Clock, Flame, Info, BellRing, X, MapPin, User, LogOut, Lock, Unlock, Link, Unlink, Utensils, RefreshCw } from 'lucide-react';
+import toast from 'react-hot-toast';
+import axios from 'axios';
 import signalRService from '../../services/signalrService';
 import { getApiUrl } from '../../apiConfig';
 import { useAuth } from '../../context/AuthContext';
+import MasterBillModal from './MasterBillModal';
 
 export default function WaiterOrdersPage() {
   const { user, logout } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newOrderAlert, setNewOrderAlert] = useState(null);
-  
+
+  // Table Management State
+  const [tents, setTents] = useState([]);
+  const [activeTab, setActiveTab] = useState('DELIVERY'); // 'DELIVERY' or 'TABLE_MANAGEMENT'
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeSource, setMergeSource] = useState(null);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [merging, setMerging] = useState(false);
+  const [selectedMasterBill, setSelectedMasterBill] = useState(null);
+
   // Reference for audio so we can stop it later
   const alarmAudio = useRef(null);
+
+  const isTableEntity = (tent) => {
+    if (!tent) return false;
+    const zType = tent.zone?.zoneType;
+    const zName = (tent.zone?.name || tent.zoneName || '').toLowerCase();
+    const tName = (tent.name || '').toLowerCase();
+
+    return (
+      zType === 'DiningTable' ||
+      zName.includes('bàn') ||
+      zName.includes('ẩm thực') ||
+      zName.includes('nhà hàng') ||
+      zName.includes('ăn uống') ||
+      tName.includes('bàn')
+    );
+  };
+
+  const fetchTents = async () => {
+    try {
+      const res = await axios.get(getApiUrl('/api/Tents'));
+      if (res.data) {
+        setTents(res.data);
+      }
+    } catch (err) {
+      console.error("Lỗi tải danh sách bàn:", err);
+    }
+  };
 
   const fetchOrders = async () => {
     try {
       const res = await fetch(getApiUrl('/api/Orders'));
       const data = await res.json();
       
-      // Filter orders by assigned zone if applicable
       let readyOrders = data.filter(o => o.status === 'Ready');
       if (user?.assignedZoneId || user?.assignedZoneName) {
         readyOrders = readyOrders.filter(o => {
@@ -41,6 +79,58 @@ export default function WaiterOrdersPage() {
     }
   };
 
+  // Actions for Dining Tables
+  const handleOpenTable = async (tableId, tableName) => {
+    try {
+      await axios.post(getApiUrl(`/api/Tents/${tableId}/open-table`));
+      toast.success(`Đã MỞ BÀN ${tableName}! Khách tại bàn có thể quét QR gọi món.`);
+      fetchTents();
+    } catch (err) {
+      toast.error(err.response?.data || "Không thể mở bàn.");
+    }
+  };
+
+  const handleCloseTable = async (tableId, tableName) => {
+    try {
+      await axios.post(getApiUrl(`/api/Tents/${tableId}/close-table`));
+      toast.success(`Đã ĐÓNG BÀN ${tableName} & khóa mã QR!`);
+      fetchTents();
+    } catch (err) {
+      toast.error(err.response?.data || "Không thể đóng bàn.");
+    }
+  };
+
+  const handleUnmergeTable = async (tableId, tableName) => {
+    try {
+      await axios.post(getApiUrl(`/api/Tents/${tableId}/unmerge-table`));
+      toast.success(`Đã TÁCH BÀN ${tableName}!`);
+      fetchTents();
+    } catch (err) {
+      toast.error("Không thể tách bàn.");
+    }
+  };
+
+  const handleConfirmMerge = async () => {
+    if (!mergeSource || !mergeTargetId) return toast.error("Vui lòng chọn bàn cần ghép vào!");
+    setMerging(true);
+    try {
+      await axios.post(getApiUrl('/api/Tents/merge-tables'), {
+        sourceTentId: mergeSource.id,
+        targetTentId: parseInt(mergeTargetId)
+      });
+      const targetTable = tents.find(t => t.id === parseInt(mergeTargetId));
+      toast.success(`Đã ghép Bàn ${mergeSource.name} vào Bàn ${targetTable?.name || ''}!`);
+      setShowMergeModal(false);
+      setMergeSource(null);
+      setMergeTargetId('');
+      fetchTents();
+    } catch (err) {
+      toast.error(err.response?.data || "Ghép bàn thất bại.");
+    } finally {
+      setMerging(false);
+    }
+  };
+
   useEffect(() => {
     // Request Chrome Web Push Notification permission
     if ('Notification' in window && Notification.permission !== 'granted') {
@@ -48,6 +138,7 @@ export default function WaiterOrdersPage() {
     }
 
     fetchOrders();
+    fetchTents();
 
     const handleOrderToWaiter = (notification) => {
       // Check zone matching before alerting
@@ -95,16 +186,24 @@ export default function WaiterOrdersPage() {
 
     const handleOrderUpdated = () => {
       fetchOrders();
+      fetchTents();
+    };
+
+    const handleTentStatusChanged = () => {
+      fetchTents();
+      fetchOrders();
     };
 
     signalRService.on("OrderToWaiter", handleOrderToWaiter);
     signalRService.on("OrderUpdated", handleOrderUpdated);
     signalRService.on("OrderStatusUpdated", handleOrderUpdated);
+    signalRService.on("TentStatusChanged", handleTentStatusChanged);
 
     return () => {
       signalRService.off("OrderToWaiter", handleOrderToWaiter);
       signalRService.off("OrderUpdated", handleOrderUpdated);
       signalRService.off("OrderStatusUpdated", handleOrderUpdated);
+      signalRService.off("TentStatusChanged", handleTentStatusChanged);
       if (alarmAudio.current) {
         alarmAudio.current.pause();
       }
@@ -216,64 +315,239 @@ export default function WaiterOrdersPage() {
     return true;
   });
 
-  if (loading) return <div className="p-6 text-center text-slate-500 animate-pulse">Đang đồng bộ đơn hàng...</div>;
+  const canManageTables = () => {
+    if (!user) return true;
+    if (user.role === 'Manager' || user.role === 'Receptionist') return true;
+
+    const zoneName = (user.assignedZoneName || '').toLowerCase();
+    const isGlobalWaiter = !user.assignedZoneId && (!user.assignedZoneName || zoneName === "toàn bộ các khu" || zoneName === "tất cả các khu");
+    if (isGlobalWaiter) return true;
+
+    return zoneName.includes('bàn') || zoneName.includes('ẩm thực') || zoneName.includes('nhà hàng') || zoneName.includes('ăn uống');
+  };
+
+  const formatTableName = (name) => {
+    if (!name) return "Bàn";
+    const clean = name.trim();
+    return clean.toLowerCase().startsWith("bàn") ? clean : `Bàn ${clean}`;
+  };
+
+  const diningTables = tents.filter(t => isTableEntity(t));
+  const showTableTab = canManageTables();
+
+  const isGlobalStaff = !user?.assignedZoneId && (!user?.assignedZoneName || user.assignedZoneName === "Toàn bộ các khu" || user.assignedZoneName === "Tất cả các khu") || user?.role === "Manager" || user?.role === "Receptionist";
+
+  if (loading) return <div className="p-6 text-center text-slate-500 animate-pulse font-bold">Đang đồng bộ đơn hàng & danh sách bàn...</div>;
 
   return (
-    <div className="p-4 space-y-4 pb-12 relative h-full">
-      
-      {/* Location Filter Sub-bar for Waiters */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 bg-white p-2 rounded-2xl border border-slate-100 shadow-xs">
-        {[
-          { key: 'ALL', label: `Tất cả (${orders.length})` },
-          { key: 'TABLE', label: `🍽️ Bàn ăn (${orders.filter(o => getLocationFormatted(o).isTable).length})` },
-          { key: 'TENT', label: `⛺ Lều (${orders.filter(o => !getLocationFormatted(o).isTable).length})` }
-        ].map(f => (
+    <div className="p-4 space-y-4 pb-12 relative min-h-full">
+      {/* Top Header Mode Toggle: Giao Món vs Quản Lý Bàn (Only visible for Dining Table / All-Zone staff) */}
+      {showTableTab && (
+        <div className="flex bg-slate-200/80 p-1 rounded-2xl border border-slate-300/60 shadow-xs">
           <button
-            key={f.key}
-            onClick={() => setLocationFilter(f.key)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex-shrink-0 ${
-              locationFilter === f.key
-                ? 'bg-[#1B4D3E] text-white shadow-sm'
-                : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+            onClick={() => setActiveTab('DELIVERY')}
+            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'DELIVERY'
+                ? 'bg-[#1B4D3E] text-white shadow-md'
+                : 'text-slate-700 hover:bg-white/60'
             }`}
           >
-            {f.label}
+            <BellRing size={16} />
+            Giao Món ({orders.length})
           </button>
-        ))}
-      </div>
-      
-      {/* Fullscreen Alert Modal for Waiter */}
-      {newOrderAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-6 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
-            <div className="bg-emerald-500 w-full py-8 flex flex-col items-center justify-center text-white relative">
-              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-              <BellRing size={64} className="animate-wiggle drop-shadow-lg mb-4" />
-              <h2 className="text-3xl font-black uppercase tracking-widest text-emerald-50">{newOrderAlert.tentName}</h2>
-            </div>
-            
-            <div className="p-6 w-full">
-              <p className="text-lg font-bold text-slate-800 mb-1">Có món cần giao khẩn cấp!</p>
-              <p className="text-slate-500 font-medium mb-8">Khách hàng: {newOrderAlert.customerName}</p>
-              
-              <button 
-                onClick={dismissAlert}
-                className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xl rounded-2xl shadow-lg shadow-emerald-500/30 transition-all active:scale-95 flex justify-center items-center gap-2"
-              >
-                ĐÃ NHẬN THÔNG TIN
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={() => setActiveTab('TABLE_MANAGEMENT')}
+            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'TABLE_MANAGEMENT'
+                ? 'bg-[#1B4D3E] text-white shadow-md'
+                : 'text-slate-700 hover:bg-white/60'
+            }`}
+          >
+            <Utensils size={16} />
+            Quản Lý Bàn ({diningTables.length})
+          </button>
         </div>
       )}
 
-      {filteredOrders.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-[50vh] opacity-50 space-y-2">
-          <CheckCircle2 size={56} className="text-emerald-500" />
-          <h2 className="text-lg font-bold text-slate-600">Không có đơn cần giao trong mục này</h2>
-          <p className="text-xs text-slate-500 font-medium text-center px-4">Tất cả món đã được giao, hoặc Bếp chưa làm xong.</p>
+      {showTableTab && activeTab === 'TABLE_MANAGEMENT' ? (
+        /* TABLE MANAGEMENT VIEW */
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <div>
+              <h2 className="text-lg font-black text-slate-800 tracking-tight">Sơ Đồ Bàn Khu Ẩm Thực</h2>
+              <p className="text-xs text-slate-500 font-bold">1-Chạm Mở Bàn, Đóng Bàn & Ghép Bàn Realtime</p>
+            </div>
+            <button
+              onClick={fetchTents}
+              className="p-2 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 text-xs flex items-center gap-1"
+            >
+              <RefreshCw size={14} /> Làm mới
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {diningTables.map((table) => {
+              const isOpen = table.isQrUnlocked || table.status === "Occupied" || table.mergedParentTentId;
+              const mergedParent = table.mergedParentTentId
+                ? tents.find((t) => t.id === table.mergedParentTentId)
+                : null;
+              const isChildMerged = !!table.mergedParentTentId;
+              const tableNameDisplay = formatTableName(table.name);
+
+              return (
+                <div
+                  key={table.id}
+                  className={`bg-white rounded-2xl p-4 shadow-sm border transition-all space-y-3 relative ${
+                    isChildMerged
+                      ? "border-purple-300 bg-purple-50/30"
+                      : isOpen
+                      ? "border-emerald-300 bg-emerald-50/20"
+                      : "border-slate-200 bg-slate-50/50"
+                  }`}
+                >
+                  {/* Row 1: Status Badge aligned to far top right */}
+                  <div className="flex justify-end">
+                    <span
+                      className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase leading-none tracking-normal whitespace-nowrap ${
+                        isChildMerged
+                          ? "bg-purple-100 text-purple-800 border border-purple-300"
+                          : isOpen
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                          : "bg-slate-200 text-slate-600 border border-slate-300"
+                      }`}
+                    >
+                      {isChildMerged
+                        ? `Ghép ➔ ${formatTableName(mergedParent?.name)}`
+                        : isOpen
+                        ? "Đang Mở"
+                        : "Trống (QR Khóa)"}
+                    </span>
+                  </div>
+
+                  {/* Row 2: Table Number & Zone Name */}
+                  <div>
+                    <h3 className="font-black text-slate-900 text-base tracking-tight">
+                      {tableNameDisplay}{" "}
+                      <span className="text-xs text-slate-500 font-bold ml-1">
+                        ({table.zone?.name || "Khu ẩm thực"})
+                      </span>
+                    </h3>
+                  </div>
+
+                  {/* Actions Bar for Table */}
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                    {!isOpen ? (
+                      <button
+                        onClick={() => handleOpenTable(table.id, table.name)}
+                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Unlock size={14} /> Mở Bàn 1-Chạm
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleCloseTable(table.id, table.name)}
+                          className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Lock size={14} /> Đóng Bàn
+                        </button>
+
+                        {!isChildMerged ? (
+                          <button
+                            onClick={() => {
+                              setMergeSource(table);
+                              setShowMergeModal(true);
+                            }}
+                            className="py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <Link size={14} /> Ghép Bàn
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleUnmergeTable(table.id, table.name)}
+                            className="py-2 px-3 bg-slate-700 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <Unlink size={14} /> Tách Bàn
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() =>
+                            setSelectedMasterBill({
+                              tentId: table.id,
+                              tentName: table.name,
+                            })
+                          }
+                          className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-slate-900 font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          💳 Master Bill
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
+        /* DELIVERY VIEW */
+        <>
+          {/* Location Filter Sub-bar (Only shown for All-Zone staff) */}
+          {isGlobalStaff && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 bg-white p-2 rounded-2xl border border-slate-100 shadow-xs">
+              {[
+                { key: 'ALL', label: `Tất cả (${orders.length})` },
+                { key: 'TABLE', label: `🍽️ Bàn ăn (${orders.filter(o => getLocationFormatted(o).isTable).length})` },
+                { key: 'TENT', label: `⛺ Lều (${orders.filter(o => !getLocationFormatted(o).isTable).length})` }
+              ].map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setLocationFilter(f.key)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex-shrink-0 ${
+                    locationFilter === f.key
+                      ? 'bg-[#1B4D3E] text-white shadow-sm'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+          
+          {/* Fullscreen Alert Modal for Waiter */}
+          {newOrderAlert && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+                <div className="bg-emerald-500 w-full py-8 flex flex-col items-center justify-center text-white relative">
+                  <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+                  <BellRing size={64} className="animate-wiggle drop-shadow-lg mb-4" />
+                  <h2 className="text-3xl font-black uppercase tracking-widest text-emerald-50">{newOrderAlert.tentName}</h2>
+                </div>
+                
+                <div className="p-6 w-full">
+                  <p className="text-lg font-bold text-slate-800 mb-1">Có món cần giao khẩn cấp!</p>
+                  <p className="text-slate-500 font-medium mb-8">Khách hàng: {newOrderAlert.customerName}</p>
+                  
+                  <button 
+                    onClick={dismissAlert}
+                    className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xl rounded-2xl shadow-lg shadow-emerald-500/30 transition-all active:scale-95 flex justify-center items-center gap-2"
+                  >
+                    ĐÃ NHẬN THÔNG TIN
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {filteredOrders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[50vh] opacity-50 space-y-2">
+              <CheckCircle2 size={56} className="text-emerald-500" />
+              <h2 className="text-lg font-bold text-slate-600">Không có đơn cần giao trong mục này</h2>
+              <p className="text-xs text-slate-500 font-medium text-center px-4">Tất cả món đã được giao, hoặc Bếp chưa làm xong.</p>
+            </div>
+          ) : (
         <div className="space-y-5">
           <div className="flex justify-between items-end mb-2 px-2">
             <div>
@@ -352,6 +626,8 @@ export default function WaiterOrdersPage() {
           })}
         </div>
       )}
+        </>
+      )}
 
       {/* WAITER PHOTO PROOF UPLOAD MODAL */}
       {selectedOrderForProof && (
@@ -416,6 +692,85 @@ export default function WaiterOrdersPage() {
           </div>
         </div>
       )}
+      {/* TABLE MERGE MODAL */}
+      {showMergeModal && mergeSource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-100 animate-in zoom-in-95">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-black text-base text-purple-950 flex items-center gap-1.5">
+                  <Link size={18} className="text-purple-600" /> Ghép Bàn & Gộp Hóa Đơn
+                </h3>
+                <p className="text-xs text-slate-500 font-bold mt-0.5">
+                  Ghép Bàn <strong className="text-purple-700">{mergeSource.name}</strong> vào một Bàn chính
+                </p>
+              </div>
+              <button
+                onClick={() => { setShowMergeModal(false); setMergeSource(null); }}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 font-bold text-slate-500 text-sm flex items-center justify-center"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-black text-slate-700">
+                Chọn Bàn Chính (Master Table) cần gộp hóa đơn:
+              </label>
+              <select
+                value={mergeTargetId}
+                onChange={(e) => setMergeTargetId(e.target.value)}
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-purple-500 outline-none"
+              >
+                <option value="">-- Chọn Bàn Chính --</option>
+                {diningTables
+                  .filter((t) => t.id !== mergeSource.id)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      Bàn {t.name} ({t.zone?.name || "Khu Ẩm Thực"})
+                    </option>
+                  ))}
+              </select>
+              <p className="text-[11px] text-purple-600/90 font-medium leading-relaxed bg-purple-50 p-3 rounded-xl border border-purple-100">
+                💡 <strong>Lưu ý:</strong> Sau khi ghép, bất kỳ món ăn nào được gọi từ mã QR của Bàn {mergeSource.name} sẽ tự động gộp chung vào 1 Master Bill của Bàn chính.
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => { setShowMergeModal(false); setMergeSource(null); }}
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleConfirmMerge}
+                disabled={merging || !mergeTargetId}
+                className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white font-black rounded-xl text-xs shadow-md shadow-purple-600/20 disabled:opacity-50"
+              >
+                {merging ? "Đang ghép bàn..." : "Xác Nhận Ghép Bàn"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MASTER BILL MODAL FOR DINING TABLES */}
+      {selectedMasterBill && (
+        <MasterBillModal
+          isOpen={!!selectedMasterBill}
+          onClose={() => setSelectedMasterBill(null)}
+          tentId={selectedMasterBill.tentId}
+          tentName={selectedMasterBill.tentName}
+          onCheckoutSuccess={() => {
+            setSelectedMasterBill(null);
+            fetchTents();
+          }}
+        />
+      )}
+
+      {/* Physical Spacer to guarantee bottom floating footer navbar clearance */}
+      <div className="h-24 w-full block pointer-events-none" aria-hidden="true" />
     </div>
   );
 }
