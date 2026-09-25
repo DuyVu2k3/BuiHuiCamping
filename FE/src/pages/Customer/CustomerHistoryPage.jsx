@@ -42,7 +42,8 @@ export default function CustomerHistoryPage() {
   // Fix GMT+7 Timezone by parsing ISO string correctly
   const getTimeAgo = (dateStr) => {
     if (!dateStr) return '';
-    const date = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
+    const cleanStr = typeof dateStr === 'string' ? dateStr.replace(/Z$/i, '') : dateStr;
+    const date = new Date(cleanStr);
     const now = new Date();
     const diffMins = Math.max(0, Math.floor((now - date) / (1000 * 60)));
     
@@ -178,7 +179,7 @@ export default function CustomerHistoryPage() {
                         onClick={() => handleCancelPendingOrder(item.id)}
                         className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-black rounded-lg transition-all active:scale-95"
                       >
-                        🔴 Hủy Đơn
+                        Hủy Đơn
                       </button>
                     </div>
                   </div>

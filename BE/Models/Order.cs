@@ -15,7 +15,7 @@ namespace BuiHuiCamping.API.Models
         public Booking? Booking { get; set; }
         public string Status { get; set; } = "Unpaid"; // Unpaid, Paid
         public decimal TotalAmount { get; set; }
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime? UpdatedAt { get; set; }
         
         public ICollection<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();

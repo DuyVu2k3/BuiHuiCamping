@@ -82,15 +82,15 @@ export default function BookingHistoryPage({ userRole = 'receptionist' }) {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'CheckedOut':
-        return <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-xs border border-emerald-300">✓ Đã Trả Lều & Thanh Toán</span>;
+        return <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-xs border border-emerald-300">Đã Trả Lều & Thanh Toán</span>;
       case 'Occupied':
-        return <span className="inline-flex items-center gap-1 px-3 py-1 bg-sky-100 text-sky-800 rounded-full font-bold text-xs border border-sky-300">🟢 Đang Ở</span>;
+        return <span className="inline-flex items-center gap-1 px-3 py-1 bg-sky-100 text-sky-800 rounded-full font-bold text-xs border border-sky-300">Đang Ở</span>;
       case 'Booked':
-        return <span className="inline-flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-bold text-xs border border-purple-300">📅 Đã Chốt Đặt</span>;
+        return <span className="inline-flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-bold text-xs border border-purple-300">Đã Chốt Đặt</span>;
       case 'Pending':
-        return <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 rounded-full font-bold text-xs border border-amber-300">⏳ Chờ Xử Lý</span>;
+        return <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 rounded-full font-bold text-xs border border-amber-300">Chờ Xử Lý</span>;
       case 'Cancelled':
-        return <span className="inline-flex items-center gap-1 px-3 py-1 bg-rose-100 text-rose-800 rounded-full font-bold text-xs border border-rose-300">❌ Đã Hủy</span>;
+        return <span className="inline-flex items-center gap-1 px-3 py-1 bg-rose-100 text-rose-800 rounded-full font-bold text-xs border border-rose-300">Đã Hủy</span>;
       default:
         return <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 text-slate-700 rounded-full font-bold text-xs border border-slate-300">{status}</span>;
     }
@@ -208,11 +208,11 @@ export default function BookingHistoryPage({ userRole = 'receptionist' }) {
               className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800 focus:outline-none focus:border-[#1B4D3E]"
             >
               <option value="All">Tất cả Trạng Thái</option>
-              <option value="CheckedOut">✓ Đã Trả Lều (CheckedOut)</option>
-              <option value="Occupied">🟢 Đang Ở (Occupied)</option>
-              <option value="Booked">📅 Đã Đặt (Booked)</option>
-              <option value="Pending">⏳ Chờ Xử Lý (Pending)</option>
-              <option value="Cancelled">❌ Đã Hủy (Cancelled)</option>
+              <option value="CheckedOut">Đã Trả Lều (CheckedOut)</option>
+              <option value="Occupied">Đang Ở (Occupied)</option>
+              <option value="Booked">Đã Đặt (Booked)</option>
+              <option value="Pending">Chờ Xử Lý (Pending)</option>
+              <option value="Cancelled">Đã Hủy (Cancelled)</option>
             </select>
           </div>
 

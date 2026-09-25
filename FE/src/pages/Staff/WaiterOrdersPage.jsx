@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, Clock, Flame, Info, BellRing, X, MapPin, User, LogOut, Lock, Unlock, Link, Unlink, Utensils, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Clock, Flame, Info, BellRing, X, MapPin, User, LogOut, Lock, Unlock, Link, Unlink, Utensils, RefreshCw, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import signalRService from '../../services/signalrService';
 import { getApiUrl } from '../../apiConfig';
+import { formatVnDateTime } from './MasterBillModal';
 import { useAuth } from '../../context/AuthContext';
 import MasterBillModal from './MasterBillModal';
 
@@ -174,7 +175,7 @@ export default function WaiterOrdersPage() {
       // Channel 3: Chrome System Push Notification Banner
       try {
         if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification("🔔 MÓN ĂN SẴN SÀNG GIAO!", {
+          new Notification("MÓN ĂN SẴN SÀNG GIAO!", {
             body: notification?.message || "Có đơn món mới đã làm xong từ Bếp!",
             icon: '/favicon.ico'
           });
@@ -295,7 +296,7 @@ export default function WaiterOrdersPage() {
                     tentNameRaw.toLowerCase().includes('bàn');
 
     const zoneFormatted = zoneNameRaw ? (zoneNameRaw.startsWith("Khu") ? zoneNameRaw : `Khu ${zoneNameRaw}`) : "";
-    const icon = isTable ? "🍽️" : "⛺";
+    const icon = "";
     const entityTitle = isTable
       ? (tentNameRaw.startsWith("Bàn") ? tentNameRaw : `Bàn ${tentNameRaw}`)
       : (tentNameRaw.startsWith("Lều") ? tentNameRaw : `Lều ${tentNameRaw}`);
@@ -480,7 +481,7 @@ export default function WaiterOrdersPage() {
                           }
                           className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-slate-900 font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1 cursor-pointer"
                         >
-                          💳 Master Bill
+                          Master Bill
                         </button>
                       </>
                     )}
@@ -498,8 +499,8 @@ export default function WaiterOrdersPage() {
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 bg-white p-2 rounded-2xl border border-slate-100 shadow-xs">
               {[
                 { key: 'ALL', label: `Tất cả (${orders.length})` },
-                { key: 'TABLE', label: `🍽️ Bàn ăn (${orders.filter(o => getLocationFormatted(o).isTable).length})` },
-                { key: 'TENT', label: `⛺ Lều (${orders.filter(o => !getLocationFormatted(o).isTable).length})` }
+                { key: 'TABLE', label: `Bàn ăn (${orders.filter(o => getLocationFormatted(o).isTable).length})` },
+                { key: 'TENT', label: `Lều (${orders.filter(o => !getLocationFormatted(o).isTable).length})` }
               ].map(f => (
                 <button
                   key={f.key}
@@ -589,7 +590,7 @@ export default function WaiterOrdersPage() {
                     <div className="flex items-center gap-1 text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
                       <Clock size={13} />
                       <span className="text-xs font-bold">
-                        {new Date(order.createdAt.endsWith('Z') ? order.createdAt : order.createdAt + 'Z').toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
+                        {formatVnDateTime(order.createdAt)}
                       </span>
                     </div>
                   </div>
@@ -635,12 +636,12 @@ export default function WaiterOrdersPage() {
           <div className="bg-white rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl border border-slate-100 animate-in zoom-in-95">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
-                <h3 className="font-black text-base text-slate-900">📸 Xác Nhận Giao Món</h3>
+                <h3 className="font-black text-base text-slate-900">Xác Nhận Giao Món</h3>
                 <p className="text-xs text-slate-500 font-bold mt-0.5">Chụp ảnh món ăn/thức uống đã đặt tại lều</p>
               </div>
               <button
                 onClick={() => setSelectedOrderForProof(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 font-bold text-slate-500 text-sm flex items-center justify-center"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 font-bold text-slate-500 text-sm flex items-center justify-center cursor-pointer"
               >
                 ✕
               </button>
@@ -653,14 +654,14 @@ export default function WaiterOrdersPage() {
                   <img src={proofPreview} alt="Proof" className="w-full h-48 object-cover" />
                   <button
                     onClick={() => { setProofFile(null); setProofPreview(null); }}
-                    className="absolute top-2 right-2 bg-slate-900/80 text-white p-1.5 rounded-full text-xs font-bold"
+                    className="absolute top-2 right-2 bg-slate-900/80 text-white p-1.5 rounded-full text-xs font-bold cursor-pointer"
                   >
                     Chụp lại
                   </button>
                 </div>
               ) : (
                 <label className="border-2 border-dashed border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all">
-                  <span className="text-3xl mb-2">📷</span>
+                  <Camera size={32} className="text-[#1B4D3E] mb-2" />
                   <span className="text-xs font-black text-[#1B4D3E]">Bấm để Mở Camera / Chọn Ảnh</span>
                   <span className="text-[10px] text-slate-400 font-medium mt-1">Ảnh sẽ được lưu vết vào hồ sơ đơn Lễ tân</span>
                   <input

@@ -168,19 +168,9 @@ export default function KitchenKdsPage() {
     const rawTime = order.createdAt || order.orderTime || order.updatedAt;
     if (!rawTime) return null;
 
-    // Handle UTC string ending with Z or local ISO string
-    let d = new Date(typeof rawTime === 'string' && rawTime.endsWith('Z') ? rawTime : rawTime + 'Z');
-    if (isNaN(d.getTime())) d = new Date(rawTime);
+    const cleanStr = typeof rawTime === 'string' ? rawTime.replace(/Z$/i, '') : rawTime;
+    const d = new Date(cleanStr);
     if (isNaN(d.getTime())) return null;
-
-    // Calculate diff in minutes
-    let diffMins = (now - d) / 60000;
-    // If diff is around 420 mins (7 hours), it means date was parsed as UTC instead of local or vice-versa
-    if (diffMins > 360 && diffMins < 480) {
-      d = new Date(d.getTime() + 7 * 3600 * 1000);
-    } else if (diffMins < -360 && diffMins > -480) {
-      d = new Date(d.getTime() - 7 * 3600 * 1000);
-    }
 
     return d;
   };
@@ -236,18 +226,25 @@ export default function KitchenKdsPage() {
 
   const getElapsedTimeInfo = (order) => {
     const orderDate = getOrderDate(order);
-    if (!orderDate) return { minutes: 0, badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300', text: '⏱️ Mới nhận' };
+    if (!orderDate) return { minutes: 0, badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold', text: 'Mới nhận' };
 
-    const diffMs = Math.max(0, now - orderDate);
-    const mins = Math.floor(diffMs / 60000);
+    const diffMs = now - orderDate;
+    let mins = Math.floor(diffMs / 60000);
+
+    // Auto-correct 7-hour (420 mins) UTC/Local timezone mismatch for orders
+    if (mins >= 360 && mins <= 480) {
+      mins = Math.max(0, mins - 420);
+    } else if (mins < 0) {
+      mins = 0;
+    }
 
     if (mins >= 15) {
-      return { minutes: mins, badgeColor: 'bg-rose-500 text-white font-black animate-pulse border-rose-600 shadow-md', text: `⏱️ ${mins} phút (CẢNH BÁO TRỄ)` };
+      return { minutes: mins, badgeColor: 'bg-rose-500 text-white font-black animate-pulse border-rose-600 shadow-md', text: `${mins} phút (CẢNH BÁO TRỄ)` };
     }
     if (mins >= 10) {
-      return { minutes: mins, badgeColor: 'bg-amber-100 text-amber-900 border-amber-300 font-bold', text: `⏱️ ${mins} phút` };
+      return { minutes: mins, badgeColor: 'bg-amber-100 text-amber-900 border-amber-300 font-bold', text: `${mins} phút` };
     }
-    return { minutes: mins, badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold', text: `⏱️ ${mins} phút` };
+    return { minutes: mins, badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold', text: `${mins} phút` };
   };
 
   // Helper to check if an order belongs to a Table or a Tent
@@ -279,7 +276,7 @@ export default function KitchenKdsPage() {
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
               <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300">Live Real-time</span>
             </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">Tự động phân biệt đơn Khách Bàn Ăn 🍽️ vs Khách Lều ⛺</p>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">Tự động phân biệt đơn Khách Bàn Ăn vs Khách Lều</p>
           </div>
         </div>
 
@@ -359,7 +356,7 @@ export default function KitchenKdsPage() {
       {newOrderChime && (
         <div className="bg-[#1B4D3E] text-white px-6 py-3 font-black text-center text-sm shadow-md flex items-center justify-center gap-2 animate-bounce">
           <BellRing size={18} className="animate-spin text-amber-300" />
-          <span>🔔 {typeof newOrderChime === 'string' ? newOrderChime : "CÓ ĐƠN MỚI CẦN CHẾ BIẾN!"}</span>
+          <span>{typeof newOrderChime === 'string' ? newOrderChime : "CÓ ĐƠN MỚI CẦN CHẾ BIẾN!"}</span>
         </div>
       )}
 
@@ -369,8 +366,8 @@ export default function KitchenKdsPage() {
           <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Lọc Vị Trí:</span>
           {[
             { key: 'ALL', label: `Tất Cả Đơn (${orders.length})` },
-            { key: 'TABLE', label: `🍽️ Bàn Khu Ẩm Thực (${orders.filter(isTableOrder).length})` },
-            { key: 'TENT', label: `⛺ Lều Cắm Trại (${orders.filter(o => !isTableOrder(o)).length})` }
+            { key: 'TABLE', label: `Bàn Khu Ẩm Thực (${orders.filter(isTableOrder).length})` },
+            { key: 'TENT', label: `Lều Cắm Trại (${orders.filter(o => !isTableOrder(o)).length})` }
           ].map(f => (
             <button
               key={f.key}
@@ -406,7 +403,7 @@ export default function KitchenKdsPage() {
               <ChefHat size={48} strokeWidth={1.5} />
             </div>
             <div className="space-y-1">
-              <h3 className="text-2xl font-extrabold text-[#1B4D3E]">Không có đơn hàng nào trong mục này 🎉</h3>
+              <h3 className="text-2xl font-extrabold text-[#1B4D3E]">Không có đơn hàng nào trong mục này</h3>
               <p className="text-sm text-slate-500 max-w-md">Tất cả món đã chế biến xong hoặc không có đơn theo bộ lọc này.</p>
             </div>
           </div>

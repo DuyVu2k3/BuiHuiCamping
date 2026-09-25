@@ -148,7 +148,6 @@ export default function LoginPage() {
               onClick={() => handleQuickLogin("manager", "123456")}
               className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold rounded-xl border border-slate-300 transition-all text-left flex items-center gap-1.5"
             >
-              👑{" "}
               <div>
                 <p className="text-[10px]">Quản Lý</p>
                 <p className="text-[8px] text-slate-500 font-mono">manager</p>
@@ -159,7 +158,6 @@ export default function LoginPage() {
               onClick={() => handleQuickLogin("reception", "123456")}
               className="py-2 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold rounded-xl border border-emerald-200 transition-all text-left flex items-center gap-1.5"
             >
-              🛎️{" "}
               <div>
                 <p className="text-[10px]">Lễ Tân</p>
                 <p className="text-[8px] text-emerald-600 font-mono">
@@ -172,7 +170,6 @@ export default function LoginPage() {
               onClick={() => handleQuickLogin("bep1", "123456")}
               className="py-2 px-2 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold rounded-xl border border-amber-200 transition-all text-left flex items-center gap-1.5"
             >
-              🍳{" "}
               <div>
                 <p className="text-[10px]">Nhà Bếp</p>
                 <p className="text-[8px] text-amber-600 font-mono">
@@ -191,7 +188,7 @@ export default function LoginPage() {
                 onClick={() => handleQuickLogin("waiter_a", "123456")}
                 className="py-2 px-1.5 bg-sky-50 hover:bg-sky-100 text-sky-900 font-bold rounded-xl border border-sky-200 transition-all text-center"
               >
-                <span className="block text-[10px]">🏃 Khu A</span>
+                <span className="block text-[10px]">Khu A</span>
                 <span className="text-[8px] text-sky-600 font-mono block">
                   waiter_a
                 </span>
@@ -201,7 +198,7 @@ export default function LoginPage() {
                 onClick={() => handleQuickLogin("waiter_b", "123456")}
                 className="py-2 px-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 font-bold rounded-xl border border-purple-200 transition-all text-center"
               >
-                <span className="block text-[10px]">🏃 Khu B</span>
+                <span className="block text-[10px]">Khu B</span>
                 <span className="text-[8px] text-purple-600 font-mono block">
                   waiter_b
                 </span>
@@ -211,7 +208,7 @@ export default function LoginPage() {
                 onClick={() => handleQuickLogin("waiter_amthuc", "123456")}
                 className="py-2 px-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold rounded-xl border border-emerald-200 transition-all text-center"
               >
-                <span className="block text-[10px]">🍽️ Khu Ẩm Thực</span>
+                <span className="block text-[10px]">Khu Ẩm Thực</span>
                 <span className="text-[8px] text-emerald-600 font-mono block">
                   waiter_amthuc
                 </span>
@@ -221,7 +218,7 @@ export default function LoginPage() {
                 onClick={() => handleQuickLogin("waiter_all", "123456")}
                 className="py-2 px-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold rounded-xl border border-amber-200 transition-all text-center"
               >
-                <span className="block text-[10px]">🏃 Toàn Khu</span>
+                <span className="block text-[10px]">Toàn Khu</span>
                 <span className="text-[8px] text-amber-600 font-mono block">
                   waiter_all
                 </span>

@@ -21,6 +21,9 @@ namespace BuiHuiCamping.API.Controllers
         public decimal HourlyFirstHourPrice { get; set; } = 100000;
         public decimal HourlyExtraHourPrice { get; set; } = 50000;
         public int EstimatedHours { get; set; } = 1;
+
+        public string? TentSetupDetails { get; set; } = string.Empty;
+        public string? TentSetupSummary { get; set; } = string.Empty;
     }
 
     public class OnlineBookingDto
@@ -31,6 +34,9 @@ namespace BuiHuiCamping.API.Controllers
         public DateTime? CheckInDate { get; set; }
         public DateTime? CheckOutDate { get; set; }
         public decimal DepositAmount { get; set; }
+        public string? BookingType { get; set; } // Overnight or Hourly
+        public string? TentSetupDetails { get; set; }
+        public string? TentSetupSummary { get; set; }
     }
 
     public class RequestCheckoutDto
@@ -60,6 +66,40 @@ namespace BuiHuiCamping.API.Controllers
                 .AsNoTracking()
                 .ToListAsync();
             return Ok(bookings);
+        }
+
+        [HttpGet("pending-requests")]
+        public async Task<IActionResult> GetPendingBookingRequests()
+        {
+            var pendingBookings = await _context.Bookings
+                .Include(b => b.Tents)
+                .ThenInclude(t => t.Zone)
+                .Where(b => b.Status == "Pending")
+                .OrderByDescending(b => b.BookingTime)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var result = pendingBookings.Select(b => {
+                var tentDetails = b.Tents.Select(t => {
+                    var zoneName = t.Zone?.Name ?? "Khu Cắm Trại";
+                    return $"{zoneName} (Lều {t.Name})";
+                });
+
+                return new {
+                    bookingId = b.Id,
+                    customerName = b.CustomerName,
+                    phoneNumber = b.PhoneNumber,
+                    tentsList = string.Join(", ", tentDetails),
+                    checkInDate = b.CheckInDate,
+                    checkOutDate = b.CheckOutDate,
+                    bookingTime = b.BookingTime,
+                    depositAmount = b.DepositAmount,
+                    bookingType = b.BookingType,
+                    totalPrice = b.TotalPrice
+                };
+            });
+
+            return Ok(result);
         }
 
         [HttpGet("history")]
@@ -199,6 +239,8 @@ namespace BuiHuiCamping.API.Controllers
                 HourlyExtraHourPrice = dto.HourlyExtraHourPrice > 0 ? dto.HourlyExtraHourPrice : 50000,
                 EstimatedHours = dto.EstimatedHours > 0 ? dto.EstimatedHours : 1,
                 Note = dto.Note ?? string.Empty,
+                TentSetupDetails = dto.TentSetupDetails ?? string.Empty,
+                TentSetupSummary = dto.TentSetupSummary ?? string.Empty,
                 Status = "Booked"
             };
             
@@ -209,19 +251,67 @@ namespace BuiHuiCamping.API.Controllers
                 tent.Status = "Booked"; 
             }
 
-            if (isHourly)
+            // Calculate pricing dynamically based on configured physical tents if provided
+            bool pricingCalculatedFromSetup = false;
+            if (!string.IsNullOrEmpty(dto.TentSetupDetails))
             {
-                decimal totalHourlyPrice = 0;
-                foreach (var tent in tents)
+                try
                 {
-                    decimal firstHour = tent.HourlyPriceFirstHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceFirstHour.Value : (dto.HourlyFirstHourPrice > 0 ? dto.HourlyFirstHourPrice : 100000);
-                    totalHourlyPrice += firstHour;
+                    var items = System.Text.Json.JsonSerializer.Deserialize<List<TentSetupItemDto>>(dto.TentSetupDetails, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (items != null && items.Count > 0)
+                    {
+                        if (isHourly)
+                        {
+                            decimal sumFirst = items.Sum(i => (i.HourlyFirstHourPrice > 0 ? i.HourlyFirstHourPrice : 100000) * i.Quantity);
+                            decimal sumExtra = items.Sum(i => (i.HourlyExtraHourPrice > 0 ? i.HourlyExtraHourPrice : 50000) * i.Quantity);
+                            if (sumFirst > 0) booking.HourlyFirstHourPrice = sumFirst;
+                            if (sumExtra > 0) booking.HourlyExtraHourPrice = sumExtra;
+
+                            var start = dto.CheckInDate ?? DateTime.Now;
+                            var end = dto.CheckOutDate ?? start.AddHours(dto.EstimatedHours > 0 ? dto.EstimatedHours : 1);
+                            var diffHours = Math.Max(1, (int)Math.Ceiling((end - start).TotalHours));
+                            booking.EstimatedHours = diffHours;
+                            booking.TotalPrice = sumFirst + (diffHours > 1 ? (diffHours - 1) * sumExtra : 0);
+                        }
+                        else
+                        {
+                            decimal sumPerNight = items.Sum(i => (i.Price > 0 ? i.Price : 500000) * i.Quantity);
+                            var start = dto.CheckInDate ?? DateTime.Now;
+                            var end = dto.CheckOutDate ?? start.AddDays(1);
+                            var nights = Math.Max(1, (int)Math.Ceiling((end.Date - start.Date).TotalDays));
+                            booking.TotalPrice = sumPerNight * nights;
+                        }
+                        pricingCalculatedFromSetup = true;
+                    }
                 }
-                booking.TotalPrice = totalHourlyPrice;
+                catch {}
             }
-            else
+
+            if (!pricingCalculatedFromSetup)
             {
-                booking.TotalPrice = tents.Sum(t => t.Price);
+                if (isHourly)
+                {
+                    var start = dto.CheckInDate ?? DateTime.Now;
+                    var end = dto.CheckOutDate ?? start.AddHours(dto.EstimatedHours > 0 ? dto.EstimatedHours : 1);
+                    var diffHours = Math.Max(1, (int)Math.Ceiling((end - start).TotalHours));
+                    booking.EstimatedHours = diffHours;
+
+                    decimal totalHourlyPrice = 0;
+                    foreach (var tent in tents)
+                    {
+                        decimal firstHour = tent.HourlyPriceFirstHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceFirstHour.Value : (dto.HourlyFirstHourPrice > 0 ? dto.HourlyFirstHourPrice : 100000);
+                        decimal extraHour = tent.HourlyPriceExtraHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceExtraHour.Value : (dto.HourlyExtraHourPrice > 0 ? dto.HourlyExtraHourPrice : 50000);
+                        totalHourlyPrice += firstHour + (diffHours > 1 ? (diffHours - 1) * extraHour : 0);
+                    }
+                    booking.TotalPrice = totalHourlyPrice;
+                }
+                else
+                {
+                    var start = dto.CheckInDate ?? DateTime.Now;
+                    var end = dto.CheckOutDate ?? start.AddDays(1);
+                    var nights = Math.Max(1, (int)Math.Ceiling((end.Date - start.Date).TotalDays));
+                    booking.TotalPrice = tents.Sum(t => t.Price) * nights;
+                }
             }
             
             _context.Bookings.Add(booking);
@@ -242,12 +332,25 @@ namespace BuiHuiCamping.API.Controllers
             }
             await _context.SaveChangesAsync();
 
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            await _hubContext.Clients.All.SendAsync("TentTypesUpdated");
+
             return Ok(booking);
         }
 
         [HttpPost("online-booking")]
         public async Task<IActionResult> CreateOnlineBooking([FromBody] OnlineBookingDto dto)
         {
+            string resolvedBookingType = "Overnight";
+            if (!string.IsNullOrEmpty(dto.BookingType))
+            {
+                resolvedBookingType = (dto.BookingType.ToLower().Contains("hour") || dto.BookingType.ToLower().Contains("day")) ? "Hourly" : "Overnight";
+            }
+            else if (dto.CheckInDate.HasValue && dto.CheckOutDate.HasValue && dto.CheckInDate.Value.Date == dto.CheckOutDate.Value.Date)
+            {
+                resolvedBookingType = "Hourly";
+            }
+
             var booking = new Booking
             {
                 CustomerName = dto.CustomerName,
@@ -256,7 +359,8 @@ namespace BuiHuiCamping.API.Controllers
                 CheckOutDate = dto.CheckOutDate,
                 DepositAmount = dto.DepositAmount,
                 DepositStatus = "Paid",
-                Status = "Booked"
+                Status = "Booked",
+                BookingType = resolvedBookingType
             };
             
             var tents = await _context.Tents.Where(t => dto.TentIds.Contains(t.Id)).ToListAsync();
@@ -266,7 +370,31 @@ namespace BuiHuiCamping.API.Controllers
                 tent.Status = "Booked"; 
             }
 
-            booking.TotalPrice = tents.Sum(t => t.Price);
+            if (resolvedBookingType == "Hourly")
+            {
+                var start = dto.CheckInDate ?? DateTime.Now;
+                var end = dto.CheckOutDate ?? start.AddHours(1);
+                var diffHours = Math.Max(1, (int)Math.Ceiling((end - start).TotalHours));
+                booking.EstimatedHours = diffHours;
+                booking.HourlyFirstHourPrice = 100000;
+                booking.HourlyExtraHourPrice = 50000;
+
+                decimal totalHourlyPrice = 0;
+                foreach (var tent in tents)
+                {
+                    decimal firstHour = tent.HourlyPriceFirstHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceFirstHour.Value : 100000;
+                    decimal extraHour = tent.HourlyPriceExtraHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceExtraHour.Value : 50000;
+                    totalHourlyPrice += firstHour + (diffHours > 1 ? (diffHours - 1) * extraHour : 0);
+                }
+                booking.TotalPrice = totalHourlyPrice;
+            }
+            else
+            {
+                var start = dto.CheckInDate ?? DateTime.Now;
+                var end = dto.CheckOutDate ?? start.AddDays(1);
+                var nights = Math.Max(1, (int)Math.Ceiling((end.Date - start.Date).TotalDays));
+                booking.TotalPrice = tents.Sum(t => t.Price) * nights;
+            }
             
             _context.Bookings.Add(booking);
             await _context.SaveChangesAsync();
@@ -298,6 +426,16 @@ namespace BuiHuiCamping.API.Controllers
         [HttpPost("online-booking-request")]
         public async Task<IActionResult> CreateOnlineBookingRequest([FromBody] OnlineBookingDto dto)
         {
+            string resolvedBookingType = "Overnight";
+            if (!string.IsNullOrEmpty(dto.BookingType))
+            {
+                resolvedBookingType = (dto.BookingType.ToLower().Contains("hour") || dto.BookingType.ToLower().Contains("day")) ? "Hourly" : "Overnight";
+            }
+            else if (dto.CheckInDate.HasValue && dto.CheckOutDate.HasValue && dto.CheckInDate.Value.Date == dto.CheckOutDate.Value.Date)
+            {
+                resolvedBookingType = "Hourly";
+            }
+
             var booking = new Booking
             {
                 CustomerName = dto.CustomerName,
@@ -306,7 +444,8 @@ namespace BuiHuiCamping.API.Controllers
                 CheckOutDate = dto.CheckOutDate,
                 DepositAmount = dto.DepositAmount,
                 DepositStatus = "Pending",
-                Status = "Pending"
+                Status = "Pending",
+                BookingType = resolvedBookingType
             };
             
             var tents = await _context.Tents.Include(t => t.Zone).Where(t => dto.TentIds.Contains(t.Id)).ToListAsync();
@@ -315,7 +454,31 @@ namespace BuiHuiCamping.API.Controllers
                 booking.Tents.Add(tent);
             }
 
-            booking.TotalPrice = tents.Sum(t => t.Price);
+            if (resolvedBookingType == "Hourly")
+            {
+                var start = dto.CheckInDate ?? DateTime.Now;
+                var end = dto.CheckOutDate ?? start.AddHours(1);
+                var diffHours = Math.Max(1, (int)Math.Ceiling((end - start).TotalHours));
+                booking.EstimatedHours = diffHours;
+                booking.HourlyFirstHourPrice = 100000;
+                booking.HourlyExtraHourPrice = 50000;
+
+                decimal totalHourlyPrice = 0;
+                foreach (var tent in tents)
+                {
+                    decimal firstHour = tent.HourlyPriceFirstHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceFirstHour.Value : 100000;
+                    decimal extraHour = tent.HourlyPriceExtraHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceExtraHour.Value : 50000;
+                    totalHourlyPrice += firstHour + (diffHours > 1 ? (diffHours - 1) * extraHour : 0);
+                }
+                booking.TotalPrice = totalHourlyPrice;
+            }
+            else
+            {
+                var start = dto.CheckInDate ?? DateTime.Now;
+                var end = dto.CheckOutDate ?? start.AddDays(1);
+                var nights = Math.Max(1, (int)Math.Ceiling((end.Date - start.Date).TotalDays));
+                booking.TotalPrice = tents.Sum(t => t.Price) * nights;
+            }
             
             _context.Bookings.Add(booking);
             await _context.SaveChangesAsync();
@@ -363,7 +526,30 @@ namespace BuiHuiCamping.API.Controllers
                 }
             }
 
-            booking.TotalPrice = booking.Tents.Sum(t => t.Price);
+            if (booking.BookingType == "Hourly")
+            {
+                var start = booking.CheckInDate ?? DateTime.Now;
+                var end = booking.CheckOutDate ?? start.AddHours(booking.EstimatedHours.GetValueOrDefault(1));
+                var diffHours = Math.Max(1, (int)Math.Ceiling((end - start).TotalHours));
+                booking.EstimatedHours = diffHours;
+
+                decimal totalHourlyPrice = 0;
+                foreach (var tent in booking.Tents)
+                {
+                    decimal fPrice = tent.HourlyPriceFirstHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceFirstHour.Value : (booking.HourlyFirstHourPrice.GetValueOrDefault(0) > 0 ? booking.HourlyFirstHourPrice.Value : 100000);
+                    decimal ePrice = tent.HourlyPriceExtraHour.GetValueOrDefault(0) > 0 ? tent.HourlyPriceExtraHour.Value : (booking.HourlyExtraHourPrice.GetValueOrDefault(0) > 0 ? booking.HourlyExtraHourPrice.Value : 50000);
+                    totalHourlyPrice += fPrice + (diffHours > 1 ? (diffHours - 1) * ePrice : 0);
+                }
+                booking.TotalPrice = totalHourlyPrice;
+            }
+            else
+            {
+                var start = booking.CheckInDate ?? DateTime.Now;
+                var end = booking.CheckOutDate ?? start.AddDays(1);
+                var nights = Math.Max(1, (int)Math.Ceiling((end.Date - start.Date).TotalDays));
+                booking.TotalPrice = booking.Tents.Sum(t => t.Price) * nights;
+            }
+
             booking.DepositStatus = "Paid";
             booking.Status = "Booked";
             // IsQrUnlocked is strictly controlled 100% manually by Receptionist
@@ -387,6 +573,7 @@ namespace BuiHuiCamping.API.Controllers
 
             await _context.SaveChangesAsync();
             await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            await _hubContext.Clients.All.SendAsync("TentTypesUpdated");
             return Ok(booking);
         }
 
@@ -403,6 +590,25 @@ namespace BuiHuiCamping.API.Controllers
 
             if (booking == null) return NotFound("Không tìm thấy Booking.");
 
+            string resolvedBookingType = booking.BookingType;
+            if (string.IsNullOrEmpty(resolvedBookingType))
+            {
+                resolvedBookingType = (booking.CheckInDate.HasValue && booking.CheckOutDate.HasValue && booking.CheckInDate.Value.Date == booking.CheckOutDate.Value.Date) ? "Hourly" : "Overnight";
+            }
+
+            decimal tentRentalFee = 0;
+            int totalHourlyDuration = 0;
+            bool isHourlyBooking = resolvedBookingType.Equals("Hourly", StringComparison.OrdinalIgnoreCase);
+
+            if (isHourlyBooking)
+            {
+                var startTime = booking.ActualCheckInDate ?? booking.CheckInDate ?? booking.BookingTime;
+                var endTime = booking.ActualCheckOutDate ?? booking.CheckOutDate ?? DateTime.Now;
+                var duration = endTime - startTime;
+                double totalHours = Math.Max(0.1, duration.TotalHours);
+                totalHourlyDuration = Math.Max(1, (int)Math.Ceiling(totalHours));
+            }
+
             var tentsList = booking.Tents.Select(t => {
                 string rZone = t.Zone?.Name ?? "";
                 string rTent = t.Name ?? "";
@@ -414,19 +620,28 @@ namespace BuiHuiCamping.API.Controllers
                     : (isDiningTable ? $"Bàn {rTent}" : $"Lều {rTent}");
                 string zFormatted = (!string.IsNullOrEmpty(rZone) && !rZone.StartsWith("Khu")) ? $"Khu {rZone}" : rZone;
                 string locName = !string.IsNullOrEmpty(zFormatted) ? $"{zFormatted} - {tFormatted}" : tFormatted;
+
+                decimal calculatedPrice = t.Price;
+                if (isHourlyBooking)
+                {
+                    decimal fPrice = t.HourlyPriceFirstHour.GetValueOrDefault(0) > 0 ? t.HourlyPriceFirstHour.Value : (booking.HourlyFirstHourPrice.GetValueOrDefault(0) > 0 ? booking.HourlyFirstHourPrice.Value : 100000);
+                    decimal ePrice = t.HourlyPriceExtraHour.GetValueOrDefault(0) > 0 ? t.HourlyPriceExtraHour.Value : (booking.HourlyExtraHourPrice.GetValueOrDefault(0) > 0 ? booking.HourlyExtraHourPrice.Value : 50000);
+                    calculatedPrice = fPrice + (totalHourlyDuration > 1 ? (totalHourlyDuration - 1) * ePrice : 0);
+                }
+
                 return new {
                     id = t.Id,
                     name = rTent,
                     zoneName = rZone,
                     locationName = locName,
-                    price = t.Price
+                    price = calculatedPrice
                 };
             }).ToList();
 
             string combinedLocationName = string.Join(", ", tentsList.Select(t => t.locationName));
             var firstTent = tentsList.FirstOrDefault();
 
-            decimal tentRentalFee = booking.TotalPrice > 0 ? booking.TotalPrice : tentsList.Sum(t => t.price);
+            tentRentalFee = isHourlyBooking ? tentsList.Sum(t => t.price) : (booking.TotalPrice > 0 ? booking.TotalPrice : tentsList.Sum(t => t.price));
             decimal depositPaid = booking.DepositAmount;
 
             var activeOrders = booking.Orders.Where(o => o.Status != "Cancelled").ToList();
@@ -457,6 +672,8 @@ namespace BuiHuiCamping.API.Controllers
                 customerName = booking.CustomerName,
                 phoneNumber = booking.PhoneNumber,
                 status = booking.Status,
+                bookingType = resolvedBookingType,
+                hourlyDurationHours = totalHourlyDuration,
                 checkInDate = booking.CheckInDate,
                 checkOutDate = booking.CheckOutDate,
                 actualCheckInDate = booking.ActualCheckInDate,
@@ -476,7 +693,9 @@ namespace BuiHuiCamping.API.Controllers
                 foodAndServices = itemSummaries,
                 foodAndServicesTotal = foodAndServicesTotal,
                 grandTotal = grandTotal,
-                remainingBalance = remainingBalance
+                remainingBalance = remainingBalance,
+                tentSetupDetails = booking.TentSetupDetails,
+                tentSetupSummary = booking.TentSetupSummary
             });
         }
 
@@ -612,6 +831,7 @@ namespace BuiHuiCamping.API.Controllers
             
             await _context.SaveChangesAsync();
             await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            await _hubContext.Clients.All.SendAsync("TentTypesUpdated");
             await _hubContext.Clients.All.SendAsync("BookingQrStatusChanged");
             await _hubContext.Clients.All.SendAsync("OrderUpdated");
             return Ok(booking);
@@ -765,6 +985,7 @@ namespace BuiHuiCamping.API.Controllers
                 await _context.SaveChangesAsync();
 
                 await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+                await _hubContext.Clients.All.SendAsync("TentTypesUpdated");
                 await _hubContext.Clients.All.SendAsync("BookingQrStatusChanged");
                 await _hubContext.Clients.All.SendAsync("OrderUpdated");
 

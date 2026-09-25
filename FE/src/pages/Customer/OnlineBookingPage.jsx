@@ -17,10 +17,50 @@ import {
   PhoneCall,
   Search,
   Clock,
+  Check,
+  Plus,
+  Minus,
+  Info,
 } from "lucide-react";
 import CampsiteMap from "../../components/CampsiteMap";
 import { getApiUrl } from "../../apiConfig";
 import signalRService from "../../services/signalrService";
+
+const tentSizeConfigs = [
+  {
+    sizeKey: 'Small',
+    title: 'Lều Nhỏ',
+    slots: 1,
+    sqm: 3,
+    capacity: '1 - 2 khách',
+    description: 'Gọn gàng, ấm cúng, phù hợp cho cặp đôi hoặc đi 1 mình.',
+    defaultPrice: 500000,
+    defaultHourlyFirst: 100000,
+    defaultHourlyExtra: 50000
+  },
+  {
+    sizeKey: 'Medium',
+    title: 'Lều Trung',
+    slots: 2,
+    sqm: 6,
+    capacity: '3 - 4 khách',
+    description: 'Rộng rãi, thoải mái, phù hợp cho nhóm bạn nhỏ hoặc gia đình nhỏ.',
+    defaultPrice: 800000,
+    defaultHourlyFirst: 150000,
+    defaultHourlyExtra: 80000
+  },
+  {
+    sizeKey: 'Large',
+    title: 'Lều Lớn',
+    slots: 4,
+    sqm: 12,
+    capacity: '6 - 8 khách',
+    description: 'Không gian đại gia đình, lều vòm cao cấp, sinh hoạt thoải mái.',
+    defaultPrice: 1200000,
+    defaultHourlyFirst: 250000,
+    defaultHourlyExtra: 120000
+  }
+];
 
 const HOURS_24 = Array.from({ length: 24 }, (_, i) =>
   i.toString().padStart(2, "0"),
@@ -145,7 +185,28 @@ export default function OnlineBookingPage() {
     }
   };
 
+  const currentHour = new Date().getHours();
+
+  // Auto-correct past hours when booking for today
+  useEffect(() => {
+    if (checkInDate === today) {
+      const selectedInHour = parseInt(checkInTime.split(":")[0] || "0", 10);
+      if (selectedInHour < currentHour) {
+        const validHour = currentHour.toString().padStart(2, "0");
+        setCheckInTime(`${validHour}:00`);
+      }
+    }
+  }, [checkInDate, today, currentHour]);
+
   const handleSearchAvailability = () => {
+    if (checkInDate === today) {
+      const selectedInHour = parseInt(checkInTime.split(":")[0] || "0", 10);
+      if (selectedInHour < currentHour) {
+        toast.error("Không thể chọn giờ Check-in trong quá khứ!");
+        return;
+      }
+    }
+
     fetchData(true);
     const formattedIn = new Date(
       `${checkInDate}T${checkInTime}`,
@@ -266,8 +327,7 @@ export default function OnlineBookingPage() {
       tents: (z.tents || [])
         .map((t) => campingOnlyTents.find((item) => item.id === t.id) || t)
         .filter((t) => !isTableTent(t)),
-    }))
-    .filter((z) => (z.tents || []).length > 0);
+    }));
 
   const handleSelectTent = (tent) => {
     if (tent.status !== "Available") {
@@ -291,20 +351,37 @@ export default function OnlineBookingPage() {
     }
   };
 
-  // Calculate nights & total
-  const calculateNights = () => {
-    const start = new Date(checkInDate);
-    const end = new Date(checkOutDate);
-    const diffTime = Math.max(end - start, 86400000);
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  // Calculate duration & prices depending on stayType (Hourly vs Overnight)
+  const isHourly = stayType === "dayuse";
+
+  const calculateDuration = () => {
+    if (isHourly) {
+      const startDateTime = new Date(`${checkInDate}T${checkInTime}:00`);
+      const endDateTime = new Date(`${checkOutDate}T${checkOutTime}:00`);
+      const diffMs = Math.max(endDateTime - startDateTime, 3600000);
+      return Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60)));
+    } else {
+      const start = new Date(checkInDate);
+      const end = new Date(checkOutDate);
+      const diffTime = Math.max(end - start, 86400000);
+      return Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+    }
   };
 
-  const nights = calculateNights();
-  const totalPricePerNight = selectedTents.reduce(
-    (sum, t) => sum + (t.price || 0),
-    0,
-  );
-  const grandTotal = totalPricePerNight * nights;
+  const duration = calculateDuration(); // hours for dayuse, nights for overnight
+
+  const getTentPrice = (t) => {
+    if (isHourly) {
+      const f = t.hourlyPriceFirstHour ?? t.HourlyPriceFirstHour ?? 100000;
+      const e = t.hourlyPriceExtraHour ?? t.HourlyPriceExtraHour ?? 50000;
+      return f + (duration > 1 ? (duration - 1) * e : 0);
+    } else {
+      return (t.price || 0) * duration;
+    }
+  };
+
+  const grandTotal = selectedTents.reduce((sum, t) => sum + getTentPrice(t), 0);
+  const nights = !isHourly ? duration : 1;
 
   // Strict Full Name & 10-digit Phone Validation
   const validateNameAndPhone = (name, phone) => {
@@ -369,6 +446,7 @@ export default function OnlineBookingPage() {
           tentIds: selectedTents.map((t) => t.id),
           checkInDate: fullCheckIn,
           checkOutDate: fullCheckOut,
+          bookingType: stayType === 'dayuse' ? 'Hourly' : 'Overnight',
         },
       );
 
@@ -394,7 +472,9 @@ export default function OnlineBookingPage() {
 
   const formatTentWithZone = (t) => {
     const zoneName = t.zone?.name || "";
-    return zoneName ? `${zoneName} (Lều ${t.name})` : `Lều ${t.name}`;
+    const sizeName = t.size === 'Large' ? 'Lều Lớn' : (t.size === 'Medium' ? 'Lều Trung' : 'Lều Nhỏ');
+    const slotStr = t.slotCode || t.name;
+    return zoneName ? `${zoneName} - ${sizeName} (Ô ${slotStr})` : `${sizeName} (Ô ${slotStr})`;
   };
 
   return (
@@ -449,7 +529,7 @@ export default function OnlineBookingPage() {
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                🌙 Ở Qua Đêm (Resort Standard)
+                Ở Qua Đêm (Resort Standard)
               </button>
               <button
                 type="button"
@@ -460,19 +540,19 @@ export default function OnlineBookingPage() {
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                ☀️ Ở Trong Ngày / Theo Giờ
+                Ở Trong Ngày / Theo Giờ
               </button>
             </div>
 
             <div className="text-xs font-bold text-slate-500">
               {stayType === "overnight" ? (
                 <span>
-                  ⏰ Nhận lều <strong>14:00</strong> & Trả lều trước{" "}
+                  Nhận lều <strong>14:00</strong> & Trả lều trước{" "}
                   <strong>12:00 (Trưa hôm sau)</strong>
                 </span>
               ) : (
                 <span>
-                  ⏱️ Thuê linh hoạt trong ngày ➔ Chọn khoảng giờ nhận & trả bên
+                  Thuê linh hoạt trong ngày ➔ Chọn khoảng giờ nhận & trả bên
                   dưới
                 </span>
               )}
@@ -522,11 +602,14 @@ export default function OnlineBookingPage() {
                   }
                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-extrabold text-slate-800 focus:outline-none cursor-pointer"
                 >
-                  {HOURS_24.map((h) => (
-                    <option key={h} value={h}>
-                      {h} giờ
-                    </option>
-                  ))}
+                  {HOURS_24.map((h) => {
+                    const isPast = checkInDate === today && parseInt(h, 10) < currentHour;
+                    return (
+                      <option key={h} value={h} disabled={isPast}>
+                        {h} giờ {isPast ? "(Đã qua)" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
                 <span className="font-extrabold text-slate-400 text-xs">:</span>
                 <select
@@ -561,11 +644,17 @@ export default function OnlineBookingPage() {
                   }
                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-extrabold text-slate-800 focus:outline-none cursor-pointer"
                 >
-                  {HOURS_24.map((h) => (
-                    <option key={h} value={h}>
-                      {h} giờ
-                    </option>
-                  ))}
+                  {HOURS_24.map((h) => {
+                    const checkInH = parseInt(checkInTime.split(":")[0] || "0", 10);
+                    const isInvalidSameDayOut = (stayType === "dayuse" || checkInDate === checkOutDate) && parseInt(h, 10) < checkInH;
+                    const isPast = checkOutDate === today && parseInt(h, 10) < currentHour;
+                    const isDisabled = isInvalidSameDayOut || isPast;
+                    return (
+                      <option key={h} value={h} disabled={isDisabled}>
+                        {h} giờ {isPast ? "(Đã qua)" : isInvalidSameDayOut ? "(Trước check-in)" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
                 <span className="font-extrabold text-slate-400 text-xs">:</span>
                 <select
@@ -610,112 +699,179 @@ export default function OnlineBookingPage() {
             zones={campingOnlyZones}
             selectedTentIds={selectedTents.map((t) => t.id)}
             onSelectTent={handleSelectTent}
+            stayType={stayType}
+            duration={duration}
           />
         ) : (
-          /* Zone-Grouped Grid View */
-          <div className="space-y-10">
+          /* Zone-Grouped Grid View: Land Capacity & Flexible Tent Sizes */
+          <div className="space-y-8">
             {campingOnlyZones.map((zone) => {
-              const zoneTents = (zone.tents || []).map((t) => {
-                const liveTent =
-                  campingOnlyTents.find((et) => et.id === t.id) || t;
-                return liveTent;
-              });
-
-              if (zoneTents.length === 0) return null;
+              const totalSlots = zone.totalSlots || 20;
+              const usedSlots = (zone.tents || []).reduce((sum, t) => {
+                const liveTent = campingOnlyTents.find((et) => et.id === t.id) || t;
+                const isBusy = liveTent.status === "Booked" || liveTent.status === "Occupied" || liveTent.status === "Pending";
+                const slots = liveTent.slotsOccupied || (liveTent.size === "Large" ? 4 : (liveTent.size === "Medium" ? 2 : 1));
+                return isBusy ? sum + slots : sum;
+              }, 0);
+              const availableSlots = Math.max(0, totalSlots - usedSlots);
+              const percentUsed = Math.min(100, Math.round((usedSlots / totalSlots) * 100));
 
               return (
-                <div key={zone.id} className="space-y-4">
-                  {/* Zone Header Bar */}
-                  <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-8 bg-[#1B4D3E] rounded-full"></div>
-                      <div>
-                        <h3 className="text-xl font-black text-slate-800 tracking-tight">
-                          {zone.name}
-                        </h3>
-                        <p className="text-xs text-slate-500 font-medium">
-                          {zone.description ||
-                            "Khu cắm trại góc nhìn đẹp, thiên nhiên thoáng mát"}
-                        </p>
+                <div key={zone.id} className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-6">
+                  {/* Zone Header with Land Meter */}
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-9 bg-[#1B4D3E] rounded-full" />
+                        <div>
+                          <h3 className="text-2xl font-black text-slate-800 tracking-tight">{zone.name}</h3>
+                          <p className="text-xs text-slate-500 font-medium">
+                            {zone.description || "Khu cắm trại góc nhìn đẹp, thiên nhiên thoáng mát"}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`text-xs font-bold px-3.5 py-1.5 rounded-full border ${
+                        availableSlots === 0 
+                          ? 'bg-rose-50 text-rose-700 border-rose-200' 
+                          : percentUsed >= 70 
+                            ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                            : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      }`}>
+                        Công suất: {percentUsed}% ({usedSlots}/{totalSlots} ô đất)
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden p-0.5 border border-slate-200">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            percentUsed >= 90 ? 'bg-rose-500' :
+                            percentUsed >= 70 ? 'bg-amber-500' :
+                            'bg-emerald-500'
+                          }`}
+                          style={{ width: `${percentUsed}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] text-slate-500 font-medium">
+                        <span>Tổng bãi: <strong>{totalSlots} ô đất (~{totalSlots * 3}m²)</strong></span>
+                        <span>Đang dựng: <strong>{usedSlots} ô (~{usedSlots * 3}m²)</strong></span>
+                        <span className="text-emerald-700 font-bold">Còn trống: <strong>{availableSlots} ô (~{availableSlots * 3}m²)</strong></span>
                       </div>
                     </div>
-                    <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-200">
-                      {zoneTents.filter((t) => t.status === "Available").length}{" "}
-                      / {zoneTents.length} lều trống
-                    </span>
                   </div>
 
-                  {/* Tents Grid under Zone */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {zoneTents.map((tent) => {
-                      const isAvailable = tent.status === "Available";
-                      const isPending = tent.status === "Pending";
-                      const isSelected = selectedTents.some(
-                        (t) => t.id === tent.id,
+                  {/* 3 Tent Size Options */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                    {tentSizeConfigs.map((config) => {
+                      const neededSlots = config.slots;
+                      const availableTentsInZone = (zone.tents || [])
+                        .map((t) => campingOnlyTents.find((et) => et.id === t.id) || t)
+                        .filter((t) => t.status === "Available" && !selectedTents.some((st) => st.id === t.id));
+
+                      const selectedTentsInZone = selectedTents.filter((st) => 
+                        (zone.tents || []).some((zt) => zt.id === st.id)
                       );
+                      const selectedCount = Math.floor(selectedTentsInZone.length / neededSlots);
+                      const canAdd = availableTentsInZone.length >= neededSlots;
+
+                      const priceNight = config.defaultPrice;
+                      const priceFirstHour = config.defaultHourlyFirst;
+                      const priceExtraHour = config.defaultHourlyExtra;
+
+                      const isHourly = stayType === "dayuse";
+                      const displayPrice = isHourly
+                        ? priceFirstHour + (duration > 1 ? (duration - 1) * priceExtraHour : 0)
+                        : priceNight * duration;
+
+                      const isSelected = selectedTentsInZone.length >= neededSlots;
 
                       return (
                         <div
-                          key={tent.id}
-                          onClick={() => handleSelectTent(tent)}
-                          className={`bg-white rounded-3xl p-6 shadow-sm border transition-all duration-300 cursor-pointer flex flex-col justify-between hover:shadow-xl ${
+                          key={config.sizeKey}
+                          className={`rounded-3xl p-6 border transition-all duration-300 flex flex-col justify-between ${
                             isSelected
-                              ? "border-amber-500 ring-2 ring-amber-400 bg-amber-50/20"
-                              : isAvailable
-                                ? "border-slate-200 hover:border-emerald-500"
-                                : isPending
-                                  ? "border-amber-200 bg-amber-50/30"
-                                  : "border-slate-100 opacity-60"
+                              ? "border-amber-400 bg-amber-50/30 ring-2 ring-amber-300 shadow-md"
+                              : canAdd
+                                ? "border-slate-200 bg-white hover:border-emerald-500 hover:shadow-lg"
+                                : "border-slate-100 bg-slate-50/50 opacity-60"
                           }`}
                         >
                           <div>
-                            <div className="flex justify-between items-start mb-4">
-                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 uppercase tracking-wider">
-                                {zone.name}
+                            <div className="flex justify-between items-start mb-3">
+                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+                                {config.slots} ô đất (~{config.sqm}m²)
                               </span>
-                              <span
-                                className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
-                                  isSelected
-                                    ? "bg-amber-500 text-white shadow-sm"
-                                    : isAvailable
-                                      ? "bg-emerald-100 text-emerald-700"
-                                      : isPending
-                                        ? "bg-amber-100 text-amber-800"
-                                        : "bg-rose-100 text-rose-700"
+                              {isSelected ? (
+                                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500 text-white flex items-center gap-1 shadow-sm">
+                                  <Check size={12} /> Đã chọn ({selectedCount})
+                                </span>
+                              ) : canAdd ? (
+                                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                  Có thể dựng
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
+                                  Hết chỗ
+                                </span>
+                              )}
+                            </div>
+
+                            <h4 className="text-xl font-extrabold text-slate-800 mb-1">{config.title}</h4>
+                            <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
+                              <Users size={14} className="text-emerald-600" />
+                              <span>Phù hợp: <strong>{config.capacity}</strong></span>
+                            </div>
+                            <p className="text-xs text-slate-500 mb-4 leading-relaxed">{config.description}</p>
+                          </div>
+
+                          <div className="pt-4 border-t border-slate-100">
+                            <div className="flex justify-between items-baseline mb-4">
+                              <span className="text-xs text-slate-400">Giá thuê:</span>
+                              <div className="text-right">
+                                <span className="text-lg font-black text-amber-600">
+                                  {displayPrice.toLocaleString("vi-VN")}đ
+                                </span>
+                                <span className="text-[10px] text-slate-400 block">
+                                  {isHourly ? `/${duration} giờ` : `/${duration} đêm`}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {isSelected && (
+                                <button
+                                  onClick={() => {
+                                    const slotsToRemove = selectedTentsInZone.slice(-neededSlots);
+                                    setSelectedTents(selectedTents.filter(st => !slotsToRemove.some(r => r.id === st.id)));
+                                  }}
+                                  className="w-10 h-10 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-300 flex items-center justify-center font-bold transition-all shadow-sm"
+                                  title="Bỏ bớt 1 lều"
+                                >
+                                  <Minus size={16} />
+                                </button>
+                              )}
+
+                              <button
+                                disabled={!canAdd}
+                                onClick={() => {
+                                  if (canAdd) {
+                                    const slotsToTake = availableTentsInZone.slice(0, neededSlots);
+                                    setSelectedTents([...selectedTents, ...slotsToTake]);
+                                    toast.success(`Đã chọn ${neededSlots} ô đất cho ${config.title}!`);
+                                  }
+                                }}
+                                className={`flex-1 py-3 px-4 rounded-2xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 shadow-sm ${
+                                  canAdd
+                                    ? isSelected
+                                      ? "bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200"
+                                      : "bg-[#1B4D3E] hover:bg-emerald-800 text-white"
+                                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
                                 }`}
                               >
-                                {isSelected
-                                  ? "Đang chọn"
-                                  : isAvailable
-                                    ? "Trống"
-                                    : isPending
-                                      ? "Chờ Xác Nhận"
-                                      : "Đã Đặt"}
-                              </span>
+                                <Plus size={16} />
+                                {isSelected ? "Thêm Lều Cùng Loại" : `Chọn ${config.title}`}
+                              </button>
                             </div>
-                            <h3 className="text-xl font-extrabold text-slate-800 mb-1">
-                              Lều {tent.name}
-                            </h3>
-                            <p className="text-xs text-slate-500 mb-4">
-                              Săn mây, view núi rừng thoáng mát
-                            </p>
-                          </div>
-                          <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                            <div>
-                              <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                                Giá thuê/đêm
-                              </span>
-                              <span className="text-lg font-black text-emerald-600">
-                                {tent.price
-                                  ? tent.price.toLocaleString("vi-VN") + "đ"
-                                  : "0đ"}
-                              </span>
-                            </div>
-                            <button
-                              className={`p-2.5 rounded-xl shadow-md transition-all ${isSelected ? "bg-amber-500 text-white" : "bg-[#1B4D3E] text-white hover:bg-emerald-800"}`}
-                            >
-                              <ArrowRight size={18} />
-                            </button>
                           </div>
                         </div>
                       );
@@ -736,7 +892,7 @@ export default function OnlineBookingPage() {
               </div>
               <div>
                 <p className="text-xs font-bold text-amber-300 uppercase tracking-wider">
-                  Đã chọn {selectedTents.length} lều
+                  Đã chọn {selectedTents.length} lều ({isHourly ? `${duration} giờ` : `${duration} đêm`})
                 </p>
                 <p className="text-sm font-extrabold truncate max-w-[200px] sm:max-w-[340px]">
                   {selectedTents.map((t) => formatTentWithZone(t)).join(", ")}
@@ -747,7 +903,7 @@ export default function OnlineBookingPage() {
             <div className="flex items-center gap-3 pl-4 border-l border-white/20">
               <div className="text-right hidden sm:block">
                 <span className="text-[10px] text-emerald-200 block uppercase font-medium">
-                  Dự kiến ({nights} đêm)
+                  Dự kiến ({isHourly ? `${duration} giờ` : `${duration} đêm`})
                 </span>
                 <span className="text-sm font-black text-amber-300">
                   {grandTotal.toLocaleString("vi-VN")}đ
@@ -861,14 +1017,14 @@ export default function OnlineBookingPage() {
                         onClick={() => handleStayTypeChange("overnight")}
                         className={`py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${stayType === "overnight" ? "bg-[#1B4D3E] text-white shadow-xs" : "text-slate-600 hover:bg-slate-50"}`}
                       >
-                        ⛺ Qua đêm (14:00 - 12:00)
+                        Qua đêm (14:00 - 12:00)
                       </button>
                       <button
                         type="button"
                         onClick={() => handleStayTypeChange("dayuse")}
                         className={`py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${stayType === "dayuse" ? "bg-[#1B4D3E] text-white shadow-xs" : "text-slate-600 hover:bg-slate-50"}`}
                       >
-                        ⏱️ Trong ngày (Linh hoạt)
+                        Trong ngày (Linh hoạt)
                       </button>
                     </div>
 
@@ -990,7 +1146,7 @@ export default function OnlineBookingPage() {
                     <div className="flex justify-between text-xs font-medium text-slate-600">
                       <span>Thời gian lưu trú:</span>
                       <span className="font-bold text-slate-800">
-                        {checkInDate} ➔ {checkOutDate} ({nights} đêm)
+                        {checkInDate} ({checkInTime}) ➔ {checkOutDate} ({checkOutTime}) ({isHourly ? `${duration} giờ` : `${duration} đêm`})
                       </span>
                     </div>
 
@@ -1007,33 +1163,37 @@ export default function OnlineBookingPage() {
                             <span className="text-emerald-700 font-extrabold block text-[11px]">
                               {t.zone?.name || "Khu Cắm Trại"}
                             </span>
-                            <span className="text-slate-800 font-black text-sm">
-                              Lều {t.name}
+                            <span className="text-slate-800 font-black text-sm block">
+                              {t.size === "Large" ? "Lều Lớn" : (t.size === "Medium" ? "Lều Trung" : "Lều Nhỏ")} (Ô {t.slotCode || t.name})
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              Chiếm {t.slotsOccupied || (t.size === "Large" ? 4 : (t.size === "Medium" ? 2 : 1))} ô đất (~{(t.slotsOccupied || (t.size === "Large" ? 4 : (t.size === "Medium" ? 2 : 1))) * 3}m²)
                             </span>
                           </div>
                           <span className="font-extrabold text-[#1B4D3E] bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60">
-                            {t.price
-                              ? t.price.toLocaleString("vi-VN") + "đ"
-                              : "0đ"}{" "}
-                            / đêm
+                            {getTentPrice(t).toLocaleString("vi-VN")}đ{" "}
+                            {isHourly ? `(${duration}h)` : `(${duration} đêm)`}
                           </span>
                         </div>
                       ))}
                     </div>
 
                     <div className="flex justify-between pt-2 border-t border-slate-200 text-sm font-extrabold text-slate-800">
-                      <span>Dự kiến tổng tiền ({nights} đêm):</span>
+                      <span>Dự kiến tổng tiền ({isHourly ? `${duration} giờ` : `${duration} đêm`}):</span>
                       <span className="text-[#1B4D3E] text-base">
                         {grandTotal.toLocaleString("vi-VN")}đ
                       </span>
                     </div>
                   </div>
 
-                  <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl text-xs text-emerald-900 font-medium leading-relaxed">
-                    💡 <strong>Quy trình giữ lều:</strong> Sau khi gửi yêu cầu,
-                    Lễ tân Bùi Hui sẽ liên hệ SĐT/Zalo{" "}
-                    <strong>{phoneNumber || "của bạn"}</strong> để tư vấn chi
-                    tiết và hỗ trợ nhận cọc chốt giữ lều.
+                  <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl text-xs text-emerald-900 font-medium leading-relaxed flex items-start gap-2">
+                    <Info size={16} className="text-emerald-700 shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Quy trình giữ lều:</strong> Sau khi gửi yêu cầu,
+                      Lễ tân Bùi Hui sẽ liên hệ SĐT/Zalo{" "}
+                      <strong>{phoneNumber || "của bạn"}</strong> để tư vấn chi
+                      tiết và hỗ trợ nhận cọc chốt giữ lều.
+                    </div>
                   </div>
 
                   <button

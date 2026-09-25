@@ -76,12 +76,12 @@ export default function ReceptionistLayout() {
         };
         const inStr = formatNotifDate(checkIn);
         const outStr = formatNotifDate(checkOut);
-        dateRangeStr = `\n📅 Lịch ở: ${inStr} ➔ ${outStr}`;
+        dateRangeStr = `\nLịch ở: ${inStr} ➔ ${outStr}`;
       }
 
       const newNotif = {
         id: Date.now(),
-        title: "⚡ YÊU CẦU ĐẶT LỀU MỚI",
+        title: "YÊU CẦU ĐẶT LỀU MỚI",
         message: `Khách: ${customer} (${phone})\nLều chọn: ${tents}${dateRangeStr}`,
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         isRead: false,
@@ -97,7 +97,7 @@ export default function ReceptionistLayout() {
       playReceptionistChime();
       const newNotif = {
         id: Date.now(),
-        title: "💳 YÊU CẦU TRẢ LỀU & THANH TOÁN",
+        title: "YÊU CẦU TRẢ LỀU & THANH TOÁN",
         message: `Khách tại ${tentName} vừa báo trả lều và thanh toán master bill!`,
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         isRead: false,
@@ -232,7 +232,7 @@ export default function ReceptionistLayout() {
               <div className="w-8 h-8 rounded-full bg-[#1B4D3E] text-white flex items-center justify-center font-bold text-sm">L</div>
               <div>
                 <p className="text-xs font-bold text-white">{user?.fullName || "Nguyễn Thị Lễ Tân"}</p>
-                <p className="text-[10px] text-emerald-400 font-bold">🟢 Đang trực</p>
+                <p className="text-[10px] text-emerald-400 font-bold">Đang trực</p>
               </div>
             </div>
             <button

@@ -8,7 +8,9 @@ namespace BuiHuiCamping.API.Data
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
         public DbSet<Zone> Zones { get; set; }
-        public DbSet<Tent> Tents { get; set; }
+        public DbSet<LandSlot> LandSlots { get; set; }
+        public DbSet<LandSlot> Tents => LandSlots; // Backwards compatibility
+        public DbSet<TentType> TentTypes { get; set; }
         public DbSet<Booking> Bookings { get; set; }
         public DbSet<MenuItem> MenuItems { get; set; }
         public DbSet<Order> Orders { get; set; }
@@ -20,6 +22,13 @@ namespace BuiHuiCamping.API.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            modelBuilder.Entity<LandSlot>()
+                .ToTable("LandSlots");
+
+            modelBuilder.Entity<LandSlot>()
+                .Property(t => t.Price)
+                .HasColumnType("decimal(18,2)");
+
             modelBuilder.Entity<Booking>()
                 .Property(b => b.DepositAmount)
                 .HasColumnType("decimal(18,2)");
@@ -27,6 +36,15 @@ namespace BuiHuiCamping.API.Data
             modelBuilder.Entity<Booking>()
                 .Property(b => b.TotalPrice)
                 .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<Booking>()
+                .HasMany(b => b.Tents)
+                .WithMany(s => s.Bookings)
+                .UsingEntity<Dictionary<string, object>>(
+                    "BookingLandSlot",
+                    r => r.HasOne<LandSlot>().WithMany().HasForeignKey("LandSlotsId"),
+                    l => l.HasOne<Booking>().WithMany().HasForeignKey("BookingsId")
+                );
 
             modelBuilder.Entity<MenuItem>()
                 .Property(m => m.Price)
@@ -38,10 +56,6 @@ namespace BuiHuiCamping.API.Data
 
             modelBuilder.Entity<OrderDetail>()
                 .Property(od => od.UnitPrice)
-                .HasColumnType("decimal(18,2)");
-
-            modelBuilder.Entity<Tent>()
-                .Property(t => t.Price)
                 .HasColumnType("decimal(18,2)");
 
             modelBuilder.Entity<OrderDetail>()

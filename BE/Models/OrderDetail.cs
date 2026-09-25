@@ -11,7 +11,7 @@ namespace BuiHuiCamping.API.Models
         public decimal UnitPrice { get; set; }
         public string? Note { get; set; }
         public string Status { get; set; } = "Pending"; // Pending, Preparing, Delivered
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
         public string? BatchId { get; set; }
         public string? RejectReason { get; set; }
         public string? DeliveredBy { get; set; }

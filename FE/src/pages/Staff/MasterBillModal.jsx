@@ -4,6 +4,37 @@ import { X, Printer, CheckCircle2, Tent, User, Phone, Calendar, CreditCard, Shop
 import toast from 'react-hot-toast';
 import { getApiUrl } from '../../apiConfig';
 
+export function formatVnDateTime(rawDate) {
+  if (!rawDate) return "";
+
+  if (typeof rawDate === "string") {
+    const cleanStr = rawDate.replace(/Z$/i, "");
+    const parts = cleanStr.split("T");
+    if (parts.length === 2) {
+      const [datePart, timePart] = parts;
+      const dateComps = datePart.split("-");
+      const timeComps = timePart.split(":");
+      if (dateComps.length === 3 && timeComps.length >= 2) {
+        const [year, month, day] = dateComps;
+        const hh = timeComps[0].padStart(2, "0");
+        const mm = timeComps[1].padStart(2, "0");
+        return `${hh}:${mm} ${parseInt(day)}/${parseInt(month)}/${year}`;
+      }
+    }
+  }
+
+  const d = new Date(rawDate);
+  if (isNaN(d.getTime())) return String(rawDate);
+  return d.toLocaleString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour12: false,
+  });
+}
+
 export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, tentName, onCheckoutSuccess }) {
   const [billData, setBillData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -98,29 +129,29 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
           </button>
         </div>
 
-        {/* Modal Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 print:p-0 print:bg-white">
+        {/* Modal Content Scroll Area */}
+        <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-[#F9F8F6]">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-16 space-y-3">
               <Loader2 size={36} className="text-[#1B4D3E] animate-spin" />
-              <p className="text-xs font-bold text-slate-500">Đang tính toán Master Bill...</p>
+              <p className="text-xs font-bold text-slate-500">Đang tính toán tổng chi phí Master Bill...</p>
             </div>
           ) : !billData ? (
-            <div className="text-center py-12 space-y-3">
-              <AlertCircle size={40} className="mx-auto text-amber-500" />
-              <p className="text-sm font-bold text-slate-700">Chưa có thông tin hóa đơn cho vị trí này.</p>
-            </div>
+            <div className="p-8 text-center text-slate-500 font-bold">Không tìm thấy thông tin hóa đơn.</div>
           ) : (
             <>
-              {/* Receipt Branding / Printable Header */}
-              <div className="text-center border-b border-slate-200 pb-4">
-                <h1 className="text-2xl font-black text-[#1B4D3E]" style={{ fontFamily: "'Dancing Script', cursive" }}>Bùi Hui Camping</h1>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">
-                  {isTable ? "Hóa Đơn Dịch Vụ Bàn Ăn / Restaurant Invoice" : "Hóa Đơn Thanh Toán / Master Invoice"}
+              {/* Header Info */}
+              <div className="text-center space-y-1">
+                <p className="text-[11px] font-black tracking-widest text-[#7C5A38] uppercase">BÙI HUI CAMPING & RESORT</p>
+                <h2 className="text-xl font-black text-slate-900">
+                  {isTable ? "HÓA ĐƠN DỊCH VỤ BÀN ĂN" : "XÁC NHẬN ĐẶT LỀU & DỊCH VỤ"}
+                </h2>
+                <p className="text-xs font-bold text-slate-500">
+                  {billData.bookingId ? `Mã Đơn: #${billData.bookingId}` : `Mã Bàn: ${billData.locationName}`}
                 </p>
                 
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#1B4D3E]/10 text-[#1B4D3E] rounded-full text-xs font-black mt-2">
-                  <span>{isTable ? '🍽️' : '📍'} {billData.locationName || billData.tent?.locationName} {billData.tentsCount > 1 ? `(${billData.tentsCount} Lều)` : ''}</span>
+                  <span>{billData.locationName || billData.tent?.locationName} {billData.tentsCount > 1 ? `(${billData.tentsCount} Lều)` : ''}</span>
                 </div>
               </div>
 
@@ -140,6 +171,23 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                   <span className="font-bold text-slate-800">{billData.phoneNumber || "N/A"}</span>
                 </div>
 
+                {!isTable && (
+                  <div className="flex justify-between items-center text-slate-700 pt-1 border-t border-slate-100">
+                    <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                      <Tent size={14} className="text-[#1B4D3E]" /> Hình thức lưu trú:
+                    </span>
+                    <span className={`font-black px-2.5 py-0.5 rounded-lg text-[11px] ${
+                      billData.bookingType === 'Hourly' || (billData.checkInDate && billData.checkOutDate && billData.checkInDate.split('T')[0] === billData.checkOutDate.split('T')[0])
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                    }`}>
+                      {billData.bookingType === 'Hourly' || (billData.checkInDate && billData.checkOutDate && billData.checkInDate.split('T')[0] === billData.checkOutDate.split('T')[0])
+                        ? 'Theo Giờ / Trong Ngày (Hourly)'
+                        : 'Ở Qua Đêm (Overnight)'}
+                    </span>
+                  </div>
+                )}
+
                 {/* Table vs Tent Specific Time Info */}
                 {isTable ? (
                   <div className="pt-2 border-t border-slate-100 space-y-1.5">
@@ -148,7 +196,7 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                         <Clock size={14} className="text-emerald-600" /> Thời gian vào bàn:
                       </span>
                       <span className="font-extrabold text-slate-800">
-                        {billData.checkInDate ? new Date(billData.checkInDate.endsWith('Z') ? billData.checkInDate : billData.checkInDate + 'Z').toLocaleString('vi-VN') : 'Vừa vào bàn'}
+                        {billData.checkInDate ? formatVnDateTime(billData.checkInDate) : 'Vừa vào bàn'}
                       </span>
                     </div>
 
@@ -157,7 +205,7 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                         <Clock size={14} className="text-rose-600" /> Trạng thái bàn:
                       </span>
                       <span className="font-extrabold text-rose-700">
-                        {billData.actualCheckOutDate ? new Date(billData.actualCheckOutDate.endsWith('Z') ? billData.actualCheckOutDate : billData.actualCheckOutDate + 'Z').toLocaleString('vi-VN') : (billData.status === 'CheckedOut' ? 'Đã trả bàn' : 'Đang sử dụng bàn / Chưa tính tiền')}
+                        {billData.actualCheckOutDate ? formatVnDateTime(billData.actualCheckOutDate) : (billData.status === 'CheckedOut' ? 'Đã trả bàn' : 'Đang sử dụng bàn / Chưa tính tiền')}
                       </span>
                     </div>
                   </div>
@@ -170,7 +218,7 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                           <Calendar size={14} className="text-emerald-600" /> Lịch Check-in đăng ký:
                         </span>
                         <span className="font-extrabold text-slate-800">
-                          {billData.checkInDate ? new Date(billData.checkInDate.endsWith('Z') ? billData.checkInDate : billData.checkInDate + 'Z').toLocaleString('vi-VN') : 'N/A'}
+                          {billData.checkInDate ? formatVnDateTime(billData.checkInDate) : 'N/A'}
                         </span>
                       </div>
 
@@ -180,7 +228,7 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                             <Calendar size={14} className="text-emerald-600" /> Lịch Check-out đăng ký:
                           </span>
                           <span className="font-extrabold text-slate-800">
-                            {new Date(billData.checkOutDate.endsWith('Z') ? billData.checkOutDate : billData.checkOutDate + 'Z').toLocaleString('vi-VN')}
+                            {formatVnDateTime(billData.checkOutDate)}
                           </span>
                         </div>
                       )}
@@ -193,7 +241,7 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                           <Clock size={14} className="text-[#1B4D3E]" /> Thực tế nhận lều:
                         </span>
                         <span className="font-extrabold text-[#1B4D3E]">
-                          {billData.actualCheckInDate ? new Date(billData.actualCheckInDate.endsWith('Z') ? billData.actualCheckInDate : billData.actualCheckInDate + 'Z').toLocaleString('vi-VN') : "Đã nhận khi Check-in"}
+                          {billData.actualCheckInDate ? formatVnDateTime(billData.actualCheckInDate) : (billData.status === 'Occupied' || billData.status === 'CheckedOut' ? 'Đã nhận lều' : 'Chưa nhận lều')}
                         </span>
                       </div>
 
@@ -202,7 +250,7 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                           <Clock size={14} className="text-rose-600" /> Thực tế trả lều:
                         </span>
                         <span className="font-extrabold text-rose-700">
-                          {billData.actualCheckOutDate ? new Date(billData.actualCheckOutDate.endsWith('Z') ? billData.actualCheckOutDate : billData.actualCheckOutDate + 'Z').toLocaleString('vi-VN') : (billData.status === 'CheckedOut' ? 'Đã trả lều' : 'Đang sử dụng / Chưa trả')}
+                          {billData.actualCheckOutDate ? formatVnDateTime(billData.actualCheckOutDate) : (billData.status === 'CheckedOut' ? 'Đã trả lều' : 'Đang sử dụng / Chưa trả')}
                         </span>
                       </div>
                     </div>
@@ -225,7 +273,9 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                         {isTable ? <ShoppingBag size={16} className="text-amber-700" /> : <Tent size={16} className="text-[#1B4D3E]" />}
                         <div>
                           <p className="font-bold text-slate-800">
-                            {isTable ? "Dịch Vụ & Sử Dụng Bàn Ăn" : `Tiền Thuê Lều Trải Nghiệm ${billData.tentsCount > 1 ? `(${billData.tentsCount} Lều)` : ''}`}
+                            {isTable 
+                              ? "Dịch Vụ & Sử Dụng Bàn Ăn" 
+                              : `Tiền Thuê Lều Trải Nghiệm ${billData.tentsCount > 1 ? `(${billData.tentsCount} Lều)` : ''} ${billData.bookingType === 'Hourly' && billData.hourlyDurationHours > 0 ? `- ${billData.hourlyDurationHours} Giờ` : ''}`}
                           </p>
                         </div>
                       </div>
@@ -237,7 +287,7 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
                       <div className="pl-6 pt-1 space-y-1 border-t border-emerald-100/60 text-[11px] text-slate-600">
                         {billData.tents.map((t, index) => (
                           <div key={t.id || index} className="flex justify-between items-center">
-                            <span>• {t.locationName}</span>
+                            <span>• {t.locationName} {billData.bookingType === 'Hourly' && billData.hourlyDurationHours > 0 ? `(${billData.hourlyDurationHours} giờ)` : ''}</span>
                             <span className="font-semibold text-slate-700">{t.price?.toLocaleString('vi-VN')}đ</span>
                           </div>
                         ))}
@@ -308,29 +358,41 @@ export default function MasterBillModal({ isOpen, onClose, bookingId, tentId, te
           <div className="bg-slate-100 p-4 border-t border-slate-200 flex gap-3 print:hidden">
             <button
               onClick={handlePrint}
-              className="flex-1 py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl border border-slate-300 shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-all text-xs"
+              className="flex-1 py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl border border-slate-300 shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-all text-xs cursor-pointer"
             >
               <Printer size={16} />
               <span>In Hóa Đơn</span>
             </button>
 
-            <button
-              onClick={handleConfirmCheckout}
-              disabled={checkingOut}
-              className="flex-[2] py-3 bg-[#1B4D3E] hover:bg-[#153d31] text-white font-bold rounded-xl shadow-lg shadow-[#1B4D3E]/20 flex items-center justify-center gap-2 active:scale-95 transition-all text-xs disabled:opacity-50"
-            >
-              {checkingOut ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  <span>Đang xử lý...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 size={16} className="text-emerald-300" />
-                  <span>{isTable ? "Xác Nhận Thanh Toán & Trả Bàn" : "Xác Nhận Thanh Toán & Trả Lều"}</span>
-                </>
-              )}
-            </button>
+            {billData.status === "CheckedOut" || billData.status === "Completed" ? (
+              <div className="flex-[2] py-3 bg-emerald-100/90 text-emerald-800 font-extrabold rounded-xl border border-emerald-300 flex items-center justify-center gap-2 text-xs">
+                <CheckCircle2 size={16} className="text-emerald-700" />
+                <span>{isTable ? "Đã Thanh Toán & Trả Bàn" : "Đã Thanh Toán & Hoàn Tất Trả Lều"}</span>
+              </div>
+            ) : billData.status === "Cancelled" ? (
+              <div className="flex-[2] py-3 bg-rose-100 text-rose-800 font-extrabold rounded-xl border border-rose-300 flex items-center justify-center gap-2 text-xs">
+                <AlertCircle size={16} className="text-rose-600" />
+                <span>Đơn Này Đã Hủy</span>
+              </div>
+            ) : (
+              <button
+                onClick={handleConfirmCheckout}
+                disabled={checkingOut}
+                className="flex-[2] py-3 bg-[#1B4D3E] hover:bg-[#153d31] text-white font-bold rounded-xl shadow-lg shadow-[#1B4D3E]/20 flex items-center justify-center gap-2 active:scale-95 transition-all text-xs disabled:opacity-50 cursor-pointer"
+              >
+                {checkingOut ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Đang xử lý...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={16} className="text-emerald-300" />
+                    <span>{isTable ? "Xác Nhận Thanh Toán & Trả Bàn" : "Xác Nhận Thanh Toán & Trả Lều"}</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         )}
 

@@ -8,6 +8,7 @@ using BuiHuiCamping.API.Hubs;
 namespace BuiHuiCamping.API.Controllers
 {
     [Route("api/[controller]")]
+    [Route("api/LandSlots")]
     [ApiController]
     public class TentsController : ControllerBase
     {
@@ -34,20 +35,19 @@ namespace BuiHuiCamping.API.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateTent(Tent tent)
         {
-            // Auto generate QR Code Data based on Zone Name and Tent Name if ZoneId is provided
-            if (tent.ZoneId.HasValue)
+            if (string.IsNullOrEmpty(tent.Size)) tent.Size = "Small";
+            if (tent.SlotsOccupied <= 0)
             {
-                var zone = await _context.Zones.FindAsync(tent.ZoneId.Value);
-                if (zone != null)
-                {
-                    // Generate a relative URL for the QR code pointing to the customer portal
-                    tent.QRCodeData = $"/customer/menu?tent={zone.Name}.{tent.Name}";
-                }
+                tent.SlotsOccupied = tent.Size == "Large" ? 4 : (tent.Size == "Medium" ? 2 : 1);
             }
-            
-            if (string.IsNullOrEmpty(tent.QRCodeData))
+            if (string.IsNullOrEmpty(tent.SlotCode))
             {
-                tent.QRCodeData = $"/customer/menu?tent={tent.Name}";
+                tent.SlotCode = tent.Name;
+            }
+
+            if (tent.QRCodeData == null)
+            {
+                tent.QRCodeData = string.Empty;
             }
 
             _context.Tents.Add(tent);
@@ -71,13 +71,31 @@ namespace BuiHuiCamping.API.Controllers
                 tent.TentType = updatedTent.TentType;
             }
 
-            if (tent.ZoneId.HasValue)
+            if (!string.IsNullOrEmpty(updatedTent.Size))
             {
-                var zone = await _context.Zones.FindAsync(tent.ZoneId.Value);
-                if (zone != null)
-                {
-                    tent.QRCodeData = $"/customer/menu?tent={zone.Name}.{tent.Name}";
-                }
+                tent.Size = updatedTent.Size;
+            }
+            if (updatedTent.SlotsOccupied > 0)
+            {
+                tent.SlotsOccupied = updatedTent.SlotsOccupied;
+            }
+            else
+            {
+                tent.SlotsOccupied = tent.Size == "Large" ? 4 : (tent.Size == "Medium" ? 2 : 1);
+            }
+
+            if (!string.IsNullOrEmpty(updatedTent.SlotCode))
+            {
+                tent.SlotCode = updatedTent.SlotCode;
+            }
+            tent.GridX = updatedTent.GridX;
+            tent.GridY = updatedTent.GridY;
+            if (!string.IsNullOrEmpty(updatedTent.MapTop)) tent.MapTop = updatedTent.MapTop;
+            if (!string.IsNullOrEmpty(updatedTent.MapLeft)) tent.MapLeft = updatedTent.MapLeft;
+
+            if (updatedTent.QRCodeData != null)
+            {
+                tent.QRCodeData = updatedTent.QRCodeData;
             }
 
             await _context.SaveChangesAsync();
@@ -109,6 +127,103 @@ namespace BuiHuiCamping.API.Controllers
             await _context.SaveChangesAsync();
             await _hubContext.Clients.All.SendAsync("TentStatusChanged");
             return Ok(tent);
+        }
+
+        [HttpPut("batch-coordinates")]
+        public async Task<IActionResult> BatchUpdateCoordinates([FromBody] List<BatchUpdateCoordinatesDto> dtoList)
+        {
+            if (dtoList == null || !dtoList.Any()) return BadRequest("Danh sách rỗng");
+
+            var ids = dtoList.Select(d => d.Id).ToList();
+            var tents = await _context.Tents.Where(t => ids.Contains(t.Id)).ToListAsync();
+
+            foreach (var item in dtoList)
+            {
+                var tent = tents.FirstOrDefault(t => t.Id == item.Id);
+                if (tent != null)
+                {
+                    tent.MapTop = item.MapTop;
+                    tent.MapLeft = item.MapLeft;
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            return Ok(new { success = true, updatedCount = tents.Count });
+        }
+
+        [HttpPost("preset-diagram-layout")]
+        public async Task<IActionResult> ApplyPresetDiagramLayout()
+        {
+            // Preset 16 slots matching user hand-drawn diagram on flycam aerial map:
+            // 7 slots on Row 1 (bottom), 5 slots on Row 2 (middle), 4 slots on Row 3 (top)
+            var zoneB = await _context.Zones.FirstOrDefaultAsync(z => z.Name.Contains("B") || z.ZoneType == "Camping");
+            int zoneId = zoneB?.Id ?? 2;
+            string zonePrefix = zoneB?.Name?.Replace("Khu", "")?.Trim() ?? "B";
+
+            var presetSlots = new List<(string code, string name, string top, string left, string size, decimal price)>
+            {
+                // Hàng 1 (7 ô chuẩn dưới cùng sát mép bãi cỏ)
+                ($"{zonePrefix}.01", $"Ô {zonePrefix}.01", "91%", "11%", "Small", 500000),
+                ($"{zonePrefix}.02", $"Ô {zonePrefix}.02", "91%", "17%", "Small", 500000),
+                ($"{zonePrefix}.03", $"Ô {zonePrefix}.03", "91%", "23%", "Small", 500000),
+                ($"{zonePrefix}.04", $"Ô {zonePrefix}.04", "91%", "30%", "Small", 500000),
+                ($"{zonePrefix}.05", $"Ô {zonePrefix}.05", "91%", "36%", "Small", 500000),
+                ($"{zonePrefix}.06", $"Ô {zonePrefix}.06", "91%", "42%", "Small", 500000),
+                ($"{zonePrefix}.07", $"Ô {zonePrefix}.07", "90%", "48%", "Small", 500000),
+
+                // Hàng 2 (5 ô chuẩn giữa bãi cỏ)
+                ($"{zonePrefix}.08", $"Ô {zonePrefix}.08", "82%", "14%", "Small", 500000),
+                ($"{zonePrefix}.09", $"Ô {zonePrefix}.09", "82%", "21%", "Small", 500000),
+                ($"{zonePrefix}.10", $"Ô {zonePrefix}.10", "82%", "29%", "Small", 500000),
+                ($"{zonePrefix}.11", $"Ô {zonePrefix}.11", "81%", "36%", "Small", 500000),
+                ($"{zonePrefix}.12", $"Ô {zonePrefix}.12", "80%", "43%", "Small", 500000),
+
+                // Hàng 3 (4 ô chuẩn trên gần đường và khu dịch vụ)
+                ($"{zonePrefix}.13", $"Ô {zonePrefix}.13", "72%", "22%", "Small", 500000),
+                ($"{zonePrefix}.14", $"Ô {zonePrefix}.14", "71%", "30%", "Small", 500000),
+                ($"{zonePrefix}.15", $"Ô {zonePrefix}.15", "71%", "37%", "Small", 500000),
+                ($"{zonePrefix}.16", $"Ô {zonePrefix}.16", "70%", "44%", "Small", 500000)
+            };
+
+            var existingTents = await _context.Tents.Where(t => t.ZoneId == zoneId).ToListAsync();
+            
+            foreach (var slot in presetSlots)
+            {
+                var existing = existingTents.FirstOrDefault(t => t.SlotCode == slot.code || t.Name == slot.name);
+                int slotsOccupied = 1;
+                if (existing != null)
+                {
+                    existing.MapTop = slot.top;
+                    existing.MapLeft = slot.left;
+                    existing.Size = "Small";
+                    existing.SlotsOccupied = 1;
+                    existing.Price = slot.price;
+                }
+                else
+                {
+                    var newTent = new Tent
+                    {
+                        Name = slot.name,
+                        SlotCode = slot.code,
+                        ZoneId = zoneId,
+                        Size = "Small",
+                        SlotsOccupied = 1,
+                        MapTop = slot.top,
+                        MapLeft = slot.left,
+                        Price = slot.price,
+                        HourlyPriceFirstHour = 100000,
+                        HourlyPriceExtraHour = 50000,
+                        Status = "Available",
+                        QRCodeData = string.Empty
+                    };
+                    _context.Tents.Add(newTent);
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            return Ok(new { success = true, count = presetSlots.Count });
         }
 
         [HttpGet("validate")]
@@ -283,6 +398,13 @@ namespace BuiHuiCamping.API.Controllers
 
     public class UpdateTentCoordinatesDto
     {
+        public string MapTop { get; set; } = string.Empty;
+        public string MapLeft { get; set; } = string.Empty;
+    }
+
+    public class BatchUpdateCoordinatesDto
+    {
+        public int Id { get; set; }
         public string MapTop { get; set; } = string.Empty;
         public string MapLeft { get; set; } = string.Empty;
     }

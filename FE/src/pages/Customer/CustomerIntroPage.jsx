@@ -221,7 +221,7 @@ export default function CustomerIntroPage() {
                       : "bg-white text-slate-700 border border-slate-200/90 hover:bg-slate-50 hover:text-slate-900"
                   }`}
                 >
-                  {cat === "All" ? "🍽️ Tất cả món" : cat}
+                  {cat === "All" ? "Tất cả món" : cat}
                 </button>
               ))}
             </div>

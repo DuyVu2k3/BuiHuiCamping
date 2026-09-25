@@ -210,8 +210,8 @@ namespace BuiHuiCamping.API.Controllers
                     CustomerName = !string.IsNullOrEmpty(dto.CustomerName) ? dto.CustomerName : defaultName,
                     PhoneNumber = !string.IsNullOrEmpty(dto.PhoneNumber) ? dto.PhoneNumber : "0000000000",
                     Status = "Occupied",
-                    CheckInDate = DateTime.UtcNow,
-                    CheckOutDate = DateTime.UtcNow.AddDays(1),
+                    CheckInDate = DateTime.Now,
+                    CheckOutDate = DateTime.Now.AddDays(1),
                     IsQrUnlocked = true
                 };
                 _context.Bookings.Add(activeBooking);
@@ -230,7 +230,7 @@ namespace BuiHuiCamping.API.Controllers
                 {
                     TentId = tent.Id,
                     BookingId = activeBooking.Id,
-                    CreatedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.Now,
                     Status = "Unpaid",
                     TotalAmount = 0
                 };
@@ -255,7 +255,7 @@ namespace BuiHuiCamping.API.Controllers
                         UnitPrice = menuItem.Price,
                         Note = itemDto.Note,
                         Status = "Pending",
-                        CreatedAt = DateTime.UtcNow,
+                        CreatedAt = DateTime.Now,
                         BatchId = batchId
                     };
                     addedTotal += (menuItem.Price * itemDto.Quantity);
@@ -265,7 +265,7 @@ namespace BuiHuiCamping.API.Controllers
             }
 
             masterOrder.TotalAmount += addedTotal;
-            masterOrder.UpdatedAt = DateTime.UtcNow;
+            masterOrder.UpdatedAt = DateTime.Now;
 
             await _context.SaveChangesAsync();
 
@@ -284,7 +284,7 @@ namespace BuiHuiCamping.API.Controllers
                 phoneNumber = activeBooking?.PhoneNumber ?? "",
                 itemsSummary = string.Join(", ", itemNames),
                 totalAmount = addedTotal,
-                createdAt = DateTime.UtcNow
+                createdAt = DateTime.Now
             };
 
             await _hubContext.Clients.All.SendAsync("NewFoodOrder", orderPayload);

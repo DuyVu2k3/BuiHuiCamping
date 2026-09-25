@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle2, Clock, Flame, Info, ChefHat, BellRing, Eye, AlertTriangle, Image as ImageIcon, RefreshCw, X } from 'lucide-react';
 import { getApiUrl } from '../../apiConfig';
 import signalRService from '../../services/signalrService';
+import { formatVnDateTime } from './MasterBillModal';
 
 export default function ReceptionistOrdersPage() {
   const [auditBatches, setAuditBatches] = useState([]);
@@ -124,9 +125,9 @@ export default function ReceptionistOrdersPage() {
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           {[
             { key: 'ALL', label: 'Tất Cả Đơn' },
-            { key: 'IN_PROGRESS', label: '⏳ Đang Chế Biến / Chờ Giao' },
-            { key: 'COMPLETED', label: '✅ Đã Giao Xong (Có Ảnh)' },
-            { key: 'REJECTED', label: '❌ Bếp Từ Chối' }
+            { key: 'IN_PROGRESS', label: 'Đang Chế Biến / Chờ Giao' },
+            { key: 'COMPLETED', label: 'Đã Giao Xong (Có Ảnh)' },
+            { key: 'REJECTED', label: 'Bếp Từ Chối' }
           ].map(tab => (
             <button
               key={tab.key}
@@ -147,8 +148,8 @@ export default function ReceptionistOrdersPage() {
           <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Vị Trí:</span>
           {[
             { key: 'ALL', label: `Tất Cả Vị Trí (${auditBatches.length})` },
-            { key: 'TABLE', label: `🍽️ Bàn Khu Ẩm Thực (${auditBatches.filter(isTableBatch).length})` },
-            { key: 'TENT', label: `⛺ Lều Cắm Trại (${auditBatches.filter(b => !isTableBatch(b)).length})` }
+            { key: 'TABLE', label: `Bàn Khu Ẩm Thực (${auditBatches.filter(isTableBatch).length})` },
+            { key: 'TENT', label: `Lều Cắm Trại (${auditBatches.filter(b => !isTableBatch(b)).length})` }
           ].map(loc => (
             <button
               key={loc.key}
@@ -198,7 +199,7 @@ export default function ReceptionistOrdersPage() {
                 {/* Timestamp */}
                 <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 mb-3">
                   <Clock size={13} />
-                  <span>{new Date(batch.createdAt.endsWith('Z') ? batch.createdAt : batch.createdAt + 'Z').toLocaleString('vi-VN')}</span>
+                  <span>{formatVnDateTime(batch.createdAt)}</span>
                 </div>
 
                 {/* Items List */}
@@ -226,17 +227,17 @@ export default function ReceptionistOrdersPage() {
               <div className="pt-3 border-t border-slate-100 space-y-2">
                 {batch.deliveredBy && (
                   <p className="text-xs text-slate-600 font-bold">
-                    👤 Người giao: <strong className="text-emerald-800 font-extrabold">{batch.deliveredBy}</strong>
+                    Người giao: <strong className="text-emerald-800 font-extrabold">{batch.deliveredBy}</strong>
                   </p>
                 )}
 
                 {batch.proofImage ? (
                   <button
                     onClick={() => setViewingProofImage(getApiUrl(batch.proofImage))}
-                    className="w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold rounded-xl border border-emerald-300 text-xs flex items-center justify-center gap-1.5 transition-all shadow-2xs"
+                    className="w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold rounded-xl border border-emerald-300 text-xs flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                   >
                     <ImageIcon size={16} />
-                    <span>📸 Xem Ảnh Xác Nhận Giao Hàng</span>
+                    <span>Xem Ảnh Xác Nhận Giao Hàng</span>
                   </button>
                 ) : (
                   (batch.status === 'Delivered' || batch.status === 'Completed') && (
@@ -258,7 +259,7 @@ export default function ReceptionistOrdersPage() {
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 text-[#1B4D3E]">
                 <ImageIcon size={20} />
-                <h3 className="font-black text-base text-slate-900">📸 Ảnh Chụp Xác Nhận Giao Món</h3>
+                <h3 className="font-black text-base text-slate-900">Ảnh Chụp Xác Nhận Giao Món</h3>
               </div>
               <button
                 onClick={() => setViewingProofImage(null)}

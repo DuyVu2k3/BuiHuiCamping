@@ -15,7 +15,7 @@ namespace BuiHuiCamping.API.Models
         [Required]
         public string PhoneNumber { get; set; } = string.Empty;
         
-        public DateTime BookingTime { get; set; } = DateTime.UtcNow;
+        public DateTime BookingTime { get; set; } = DateTime.Now;
         
         public string Status { get; set; } = "Booked"; // Booked (Đã đặt), Occupied (Đang phục vụ), CheckedOut (Đã trả)
         
@@ -34,7 +34,11 @@ namespace BuiHuiCamping.API.Models
         public int? EstimatedHours { get; set; } = 1;
         public string? Note { get; set; } = string.Empty;
         
-        // Tents associated with this booking
+        // Flexible Tent Setup details (JSON list of tents chosen by customer to pitch on the land slots)
+        public string? TentSetupDetails { get; set; } = string.Empty;
+        public string? TentSetupSummary { get; set; } = string.Empty; // e.g. "2 Lều Nhỏ (~3m²/lều)" or "1 Lều Trung (~6m²)"
+        
+        // Land slots (Tents table representing parcels) associated with this booking
         public ICollection<Tent> Tents { get; set; } = new List<Tent>();
         
         // Orders associated with this booking (Master Bill)
