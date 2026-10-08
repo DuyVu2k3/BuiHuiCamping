@@ -17,25 +17,45 @@ export default function CustomerLayout() {
   const [cart, setCart] = useState([]);
   const [tentId, setTentId] = useState(null);
 
-  // Handle URL parameter and session storage for Tent
+  // Handle URL parameter and session storage for QR Card or Tent
   useEffect(() => {
+    const cardFromUrl = searchParams.get('card');
     const tentFromUrl = searchParams.get('tent');
+    let targetCard = '';
     let targetTent = '';
-    if (tentFromUrl) {
-      targetTent = tentFromUrl;
-      setTentName(tentFromUrl);
-      sessionStorage.setItem('customerTent', tentFromUrl);
+
+    if (cardFromUrl) {
+      targetCard = cardFromUrl.trim().toUpperCase();
+      sessionStorage.setItem('customerCard', targetCard);
     } else {
-      const storedTent = sessionStorage.getItem('customerTent');
-      if (storedTent) {
-        targetTent = storedTent;
-        setTentName(storedTent);
-      }
+      targetCard = sessionStorage.getItem('customerCard') || '';
     }
 
-    // Validate QR Activation status with BE
-    if (targetTent) {
+    if (tentFromUrl) {
+      targetTent = tentFromUrl.trim();
+      sessionStorage.setItem('customerTent', targetTent);
+    } else {
+      targetTent = sessionStorage.getItem('customerTent') || '';
+    }
+
+    if (targetCard) {
       setIsValidating(true);
+      setTentName(targetCard);
+      axios.get(getApiUrl(`/api/Bookings/validate-qr-card?card=${encodeURIComponent(targetCard)}`))
+        .then(res => {
+          setIsActivated(res.data.active === true);
+          if (res.data.cardCode) {
+            setTentName(res.data.cardCode);
+          }
+        })
+        .catch(err => {
+          console.error("Lỗi xác thực thẻ QR:", err);
+          setIsActivated(false);
+        })
+        .finally(() => setIsValidating(false));
+    } else if (targetTent) {
+      setIsValidating(true);
+      setTentName(targetTent);
       axios.get(getApiUrl(`/api/Tents/validate?tent=${encodeURIComponent(targetTent)}`))
         .then(res => {
           setIsActivated(res.data.active === true);
@@ -46,7 +66,6 @@ export default function CustomerLayout() {
         })
         .catch(err => {
           console.error("Lỗi xác thực QR:", err);
-          // If error or not active, default to false
           setIsActivated(false);
         })
         .finally(() => setIsValidating(false));

@@ -73,67 +73,81 @@ export default function LandGridMatrix({
   return (
     <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-[0_4px_24px_rgb(0,0,0,0.04)] border border-slate-200/80 space-y-6">
       {/* Grid Header & Quantified Land Summary */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-3 h-8 bg-[#1B4D3E] rounded-full" />
+            <div className="w-2.5 h-8 bg-emerald-800 rounded-full" />
             <div>
-              <h3 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+              <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                 <span>{zone.name}</span>
                 <span className="text-xs font-bold text-slate-400 font-mono">
-                  ({cols} cột × {rows} hàng = {totalSlots} ô pixel)
+                  ({cols} cột × {rows} hàng = {totalSlots} ô)
                 </span>
               </h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
                 {zone.description || 'Định lượng mặt bằng khu đất chia theo ô chuẩn ~3m²/ô'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-xs font-bold px-3 py-1.5 rounded-full border ${
+            <span className={`text-xs font-black px-3 py-1.5 rounded-full border shadow-xs ${
               percentUsed >= 90 ? 'bg-rose-50 text-rose-700 border-rose-200' :
               percentUsed >= 70 ? 'bg-amber-50 text-amber-700 border-amber-200' :
               'bg-emerald-50 text-emerald-800 border-emerald-200'
             }`}>
-              Công suất hoạt động: {percentUsed}% ({usedSlots}/{totalSlots} ô đang có khách)
+              Công suất hoạt động: {percentUsed}% ({usedSlots}/{totalSlots} ô)
             </span>
           </div>
         </div>
 
         {/* Quantified Land Capacity Progress Bar */}
-        <div className="space-y-1.5">
-          <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden border border-slate-200 p-0.5">
+        <div className="space-y-2.5">
+          <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden border border-slate-200/80 p-0.5">
             <div 
               className={`h-full rounded-full transition-all duration-500 ${
                 percentUsed >= 90 ? 'bg-rose-500' :
                 percentUsed >= 70 ? 'bg-amber-500' :
-                'bg-emerald-500'
+                'bg-emerald-600'
               }`}
               style={{ width: `${percentUsed}%` }}
             />
           </div>
-          <div className="flex flex-wrap justify-between items-center text-[11px] text-slate-500 font-medium gap-2">
-            <span>Tổng diện tích khu đất: <strong>{totalSlots} ô (~{totalSlots * 3}m²)</strong></span>
-            <span>Đã dựng lều: <strong>{totalPitchedSlots} ô (~{totalPitchedSlots * 3}m²)</strong></span>
-            <span>Đang ở / Đã cọc: <strong>{usedSlots} ô (~{usedSlots * 3}m²)</strong></span>
-            <span className="text-emerald-700 font-bold">Đất cỏ trống sẵn sàng: <strong>{freeGrassSlots} ô (~{freeGrassSlots * 3}m²)</strong></span>
+
+          {/* Clean Modern Metric Chips */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+            <div className="bg-slate-50 rounded-2xl p-2.5 border border-slate-200/70 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-500">Tổng mặt bằng</span>
+              <span className="text-xs font-black text-slate-800 font-mono">{totalSlots} ô (~{totalSlots * 3}m²)</span>
+            </div>
+            <div className="bg-slate-50 rounded-2xl p-2.5 border border-slate-200/70 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-500">Đã dựng lều</span>
+              <span className="text-xs font-black text-slate-800 font-mono">{totalPitchedSlots} ô</span>
+            </div>
+            <div className="bg-amber-50/70 rounded-2xl p-2.5 border border-amber-200/70 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-amber-800">Đang ở / Đã cọc</span>
+              <span className="text-xs font-black text-amber-900 font-mono">{usedSlots} ô</span>
+            </div>
+            <div className="bg-emerald-50/80 rounded-2xl p-2.5 border border-emerald-200/80 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-emerald-800">Đất cỏ sẵn sàng</span>
+              <span className="text-xs font-black text-emerald-900 font-mono">{freeGrassSlots} ô</span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Visual Land Matrix Grid */}
-      <div className="bg-slate-50/70 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-4">
+      <div className="bg-slate-50/80 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-4">
         {/* Grid Legend Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 border-b border-slate-200/70 pb-3 font-semibold">
           <div className="flex flex-wrap items-center gap-4">
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-md border-2 border-dashed border-slate-300 bg-white inline-block"></span>
-              Ô đất cỏ trống (~3m²)
+              Đất cỏ trống
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-md bg-emerald-500 inline-block shadow-xs"></span>
-              Ô đất chuẩn sẵn sàng
+              Ô đất sẵn sàng
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-md bg-amber-500 inline-block shadow-xs"></span>
@@ -144,9 +158,9 @@ export default function LandGridMatrix({
               Đang có khách lưu trú
             </span>
           </div>
-          <span className="text-[11px] text-amber-700 font-semibold flex items-center gap-1">
+          <span className="text-[11px] text-amber-800 font-semibold flex items-center gap-1">
             <Sparkles size={13} className="text-amber-500" />
-            * Di chuột vào ô đã đặt để phát sáng toàn bộ các ô thuộc cùng 1 đơn đặt lều gộp
+            Di chuột vào ô đã đặt để phát sáng toàn bộ các ô thuộc cùng đơn đặt gộp
           </span>
         </div>
 
@@ -163,29 +177,29 @@ export default function LandGridMatrix({
 
             // Empty Grass Land Slot
             if (slot.isFree || !tent) {
+              const canAdd = mode === 'manager' && onAddTentAtSlot;
               return (
                 <div
                   key={slot.slotIndex}
                   onMouseEnter={() => setHoveredSlotIndex(slot.slotIndex)}
                   onMouseLeave={() => setHoveredSlotIndex(null)}
                   onClick={() => {
-                    if (onAddTentAtSlot) {
+                    if (canAdd) {
                       onAddTentAtSlot(zone, slot);
                     }
                   }}
-                  className={`min-h-[92px] rounded-2xl border-2 border-dashed border-slate-200 bg-white/70 hover:bg-emerald-50/40 hover:border-emerald-400 p-2.5 flex flex-col justify-between transition-all duration-200 ${
-                    onAddTentAtSlot ? 'cursor-pointer hover:shadow-md' : 'cursor-default'
+                  className={`min-h-[96px] rounded-2xl border-2 border-dashed border-slate-200 bg-white/70 hover:bg-emerald-50/50 hover:border-emerald-300 p-2.5 flex flex-col justify-between transition-all duration-200 ${
+                    canAdd ? 'cursor-pointer hover:shadow-md' : 'cursor-default'
                   }`}
                 >
-                  <div className="flex justify-between items-start text-[10px]">
+                  <div className="flex justify-between items-center text-[10px]">
                     <span className="font-mono font-bold text-slate-400">Ô {slot.slotCode}</span>
-                    <span className="text-slate-400">~3m²</span>
+                    <span className="text-slate-400 font-medium">3m²</span>
                   </div>
-                  <div className="text-center my-auto">
+                  <div className="text-center my-auto py-1">
                     <p className="text-[11px] font-bold text-slate-400">Đất Trống</p>
-                    <span className="text-[9px] text-slate-400 block">Sẵn sàng dựng</span>
                   </div>
-                  {onAddTentAtSlot && (
+                  {canAdd && (
                     <div className="text-[9px] font-bold text-emerald-600 flex items-center justify-center gap-1 pt-1 border-t border-slate-100">
                       <Plus size={10} /> Dựng lều
                     </div>
@@ -195,19 +209,28 @@ export default function LandGridMatrix({
             }
 
             // Occupied Slot with Tent
-            const activeBooking = tent.activeBooking || tent.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected');
+            const isAvailable = tent.status === 'Available';
+            const activeBooking = isAvailable 
+              ? null 
+              : (tent.activeBooking !== undefined 
+                  ? tent.activeBooking 
+                  : tent.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected'));
             const tentBookingId = activeBooking?.id;
 
-            const siblingTentsInBooking = tentBookingId
-              ? zoneTents.filter(t => (t.activeBooking?.id || t.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected')?.id) === tentBookingId)
+            const siblingTentsInBooking = (!isAvailable && tentBookingId)
+              ? zoneTents.filter(t => {
+                  if (t.status === 'Available') return false;
+                  const bId = t.activeBooking !== undefined ? t.activeBooking?.id : t.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected')?.id;
+                  return bId === tentBookingId;
+                })
               : [];
             const isGrouped = siblingTentsInBooking.length > 1;
 
             const isLinkedToHoveredBooking = Boolean(hoveredBookingId && tentBookingId === hoveredBookingId);
             const isDimmed = Boolean(hoveredBookingId && !isLinkedToHoveredBooking);
             const isSelected = selectedTentIds.includes(tent.id);
-            const isOccupied = tent.status === 'Occupied';
-            const isBooked = tent.status === 'Booked' || tent.status === 'Pending';
+            const isOccupied = !isAvailable && tent.status === 'Occupied';
+            const isBooked = !isAvailable && (tent.status === 'Booked' || tent.status === 'Pending');
 
             return (
               <div
@@ -231,7 +254,7 @@ export default function LandGridMatrix({
                     onOpenTentDetail(tent);
                   }
                 }}
-                className={`min-h-[92px] rounded-2xl p-2.5 flex flex-col justify-between cursor-pointer transition-all duration-200 relative group border-2 ${
+                className={`min-h-[96px] rounded-2xl p-2.5 flex flex-col justify-between cursor-pointer transition-all duration-200 relative group border-2 ${
                   isLinkedToHoveredBooking
                     ? 'border-amber-400 bg-amber-50 ring-4 ring-amber-400 shadow-xl scale-[1.04] z-20'
                     : isDimmed
@@ -239,22 +262,22 @@ export default function LandGridMatrix({
                       : isSelected
                         ? 'border-amber-400 bg-amber-50 ring-4 ring-amber-300/70 shadow-md scale-[1.02] z-10'
                         : isOccupied
-                          ? 'border-rose-300 bg-rose-50/70 hover:border-rose-400'
+                          ? 'border-rose-300 bg-rose-50/70 hover:border-rose-400 hover:shadow-sm'
                           : isBooked
-                            ? 'border-amber-300 bg-amber-50/60 hover:border-amber-400'
+                            ? 'border-amber-300 bg-amber-50/60 hover:border-amber-400 hover:shadow-sm'
                             : 'border-emerald-300 bg-emerald-50/70 hover:border-emerald-500 hover:shadow-md'
                 }`}
               >
                 {/* Header: Slot Code & Group / Size Badge */}
-                <div className="flex justify-between items-start text-[10px]">
-                  <span className="font-mono font-bold text-slate-700">Ô {slot.slotCode}</span>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="font-mono font-extrabold text-slate-800">Ô {slot.slotCode}</span>
                   {isGrouped ? (
-                    <span className="px-1.5 py-0.5 rounded-md font-black text-[9px] bg-amber-400 text-slate-900 border border-amber-500 shadow-xs">
+                    <span className="px-1.5 py-0.5 rounded-md font-black text-[9px] bg-amber-400 text-slate-950 border border-amber-500 shadow-xs">
                       Gộp {siblingTentsInBooking.length} ô
                     </span>
                   ) : (
                     <span className="px-1.5 py-0.5 rounded-md font-bold text-[9px] border bg-emerald-100 text-emerald-900 border-emerald-300">
-                      ~3m²
+                      3m²
                     </span>
                   )}
                 </div>
@@ -264,23 +287,24 @@ export default function LandGridMatrix({
                   <p className="text-xs font-black text-slate-800 truncate">
                     {isTableZone ? (tent.name.startsWith('Bàn') ? tent.name : `Bàn ${tent.name}`) : `Ô ${tent.slotCode || tent.name}`}
                   </p>
-                  <p className="text-[10px] text-slate-500 font-medium truncate">
+                  <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
                     {isGrouped ? (
-                      <span className="text-amber-700 font-bold block truncate">
-                        {activeBooking?.tentSetupSummary ? `⛺ ${activeBooking.tentSetupSummary} • ` : 'Lều Gộp • '}
-                        {activeBooking?.customerName || 'Khách đặt'}
+                      <span className="text-amber-800 font-bold block truncate">
+                        {activeBooking?.tentSetupSummary ? `⛺ ${activeBooking.tentSetupSummary}` : (activeBooking?.customerName || 'Lều Gộp')}
                       </span>
                     ) : activeBooking?.tentSetupSummary ? (
-                      <span className="text-emerald-700 font-bold block truncate">
+                      <span className="text-emerald-800 font-bold block truncate">
                         ⛺ {activeBooking.tentSetupSummary}
                       </span>
+                    ) : isAvailable ? (
+                      <span className="text-slate-400">Sẵn sàng đón khách</span>
                     ) : (
-                      <span>Ô Chuẩn (~3m²)</span>
+                      <span className="text-slate-700 font-semibold truncate block">{activeBooking?.customerName || 'Đã đặt'}</span>
                     )}
                   </p>
                 </div>
 
-                {/* Footer: Status Pill */}
+                {/* Footer: Status Pill with clean dot */}
                 <div className="flex justify-between items-center pt-1 border-t border-slate-200/50 text-[10px]">
                   <span className={`font-bold flex items-center gap-1 ${
                     isLinkedToHoveredBooking || isSelected ? 'text-amber-800' :
@@ -297,9 +321,9 @@ export default function LandGridMatrix({
                      isOccupied ? 'Đang ở' :
                      isBooked ? 'Đã cọc' : 'Sẵn sàng'}
                   </span>
-                  <span className="font-bold text-slate-600">
-                    ~3m²
-                  </span>
+                  {isAvailable && (
+                    <span className="text-[10px] font-bold text-emerald-600">Trống</span>
+                  )}
                 </div>
 
                 {/* Manager Quick Actions: Edit & Delete */}

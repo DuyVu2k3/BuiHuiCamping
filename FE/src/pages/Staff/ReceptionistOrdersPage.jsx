@@ -149,7 +149,7 @@ export default function ReceptionistOrdersPage() {
           {[
             { key: 'ALL', label: `Tất Cả Vị Trí (${auditBatches.length})` },
             { key: 'TABLE', label: `Bàn Khu Ẩm Thực (${auditBatches.filter(isTableBatch).length})` },
-            { key: 'TENT', label: `Lều Cắm Trại (${auditBatches.filter(b => !isTableBatch(b)).length})` }
+            { key: 'TENT', label: `Ô Đất Cắm Trại (${auditBatches.filter(b => !isTableBatch(b)).length})` }
           ].map(loc => (
             <button
               key={loc.key}

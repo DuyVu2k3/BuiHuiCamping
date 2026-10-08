@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { 
@@ -26,9 +26,15 @@ import {
   RefreshCw,
   Maximize2,
   Power,
-  Box
+  Box,
+  Link2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw
 } from 'lucide-react';
 import { getApiUrl } from '../apiConfig';
+
+
 
 export default function CampsiteMap({ 
   tents = [], 
@@ -52,14 +58,20 @@ export default function CampsiteMap({
   const [hoveredSlot, setHoveredSlot] = useState(null);
   const [hoveredBookingId, setHoveredBookingId] = useState(null);
 
-  // Manager Proactive Setup State - persistent so it never unexpectedly toggles off
+  // Manager Proactive Setup State - strictly restricted to Manager only
   const [isSetupMode, setIsSetupMode] = useState(() => {
+    if (mode !== 'manager' || !allowSetup) return false;
     return localStorage.getItem('buihui_campsite_setup_mode') === 'true';
   });
 
   useEffect(() => {
-    localStorage.setItem('buihui_campsite_setup_mode', isSetupMode);
-  }, [isSetupMode]);
+    if (mode !== 'manager' || !allowSetup) {
+      setIsSetupMode(false);
+      localStorage.removeItem('buihui_campsite_setup_mode');
+    } else {
+      localStorage.setItem('buihui_campsite_setup_mode', isSetupMode);
+    }
+  }, [isSetupMode, mode, allowSetup]);
 
   const [isPlacingSlot, setIsPlacingSlot] = useState(false);
   const [localPositions, setLocalPositions] = useState({});
@@ -68,8 +80,10 @@ export default function CampsiteMap({
   const [hasUnsavedPositions, setHasUnsavedPositions] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeSelectedParcel, setActiveSelectedParcel] = useState(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   const mapContainerRef = useRef(null);
+  const svgRef = useRef(null);
 
   // Sync incoming tents mapTop & mapLeft into localPositions
   useEffect(() => {
@@ -86,15 +100,33 @@ export default function CampsiteMap({
     });
   }, [tents, hasUnsavedPositions]);
 
-  // Global window mousemove & mouseup listeners for butter-smooth dragging
-  useEffect(() => {
-    const handleWindowMouseMove = (e) => {
-      if (!draggingTentId || !dragStart) return;
-      const deltaX = e.clientX - dragStart.clientX;
-      const deltaY = e.clientY - dragStart.clientY;
+  // Convert screen client coordinates (mouse/pointer) to SVG viewBox units (0..1000, 0..562.5)
+  // Perfectly handles zoom, window resizing, mobile scaling, and scroll offsets
+  const getSvgCoordinates = (e) => {
+    if (!svgRef.current) return { x: 500, y: 281.25 };
+    const pt = svgRef.current.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const ctm = svgRef.current.getScreenCTM();
+    if (!ctm) return { x: 500, y: 281.25 };
+    const svgP = pt.matrixTransform(ctm.inverse());
+    return {
+      x: Math.min(965, Math.max(35, svgP.x)),
+      y: Math.min(530, Math.max(25, svgP.y))
+    };
+  };
 
-      const deltaLeftPercent = (deltaX / dragStart.containerWidth) * 100;
-      const deltaTopPercent = (deltaY / dragStart.containerHeight) * 100;
+  // Global window pointermove & pointerup listeners for butter-smooth dragging in SVG space
+  useEffect(() => {
+    const handleWindowPointerMove = (e) => {
+      if (!draggingTentId || !dragStart || !svgRef.current) return;
+      const svgPt = getSvgCoordinates(e);
+      const deltaSvgX = svgPt.x - dragStart.startX;
+      const deltaSvgY = svgPt.y - dragStart.startY;
+
+      // In SVG space: 1000 width = 100%, 562.5 height = 100%
+      const deltaLeftPercent = (deltaSvgX / 1000) * 100;
+      const deltaTopPercent = (deltaSvgY / 562.5) * 100;
 
       const newLeft = Math.min(94, Math.max(3, dragStart.initialLeft + deltaLeftPercent));
       const newTop = Math.min(94, Math.max(5, dragStart.initialTop + deltaTopPercent));
@@ -109,7 +141,7 @@ export default function CampsiteMap({
       setHasUnsavedPositions(true);
     };
 
-    const handleWindowMouseUp = () => {
+    const handleWindowPointerUp = () => {
       if (draggingTentId) {
         setDraggingTentId(null);
         setDragStart(null);
@@ -117,23 +149,22 @@ export default function CampsiteMap({
     };
 
     if (draggingTentId) {
-      window.addEventListener('mousemove', handleWindowMouseMove);
-      window.addEventListener('mouseup', handleWindowMouseUp);
+      window.addEventListener('pointermove', handleWindowPointerMove);
+      window.addEventListener('pointerup', handleWindowPointerUp);
     }
 
     return () => {
-      window.removeEventListener('mousemove', handleWindowMouseMove);
-      window.removeEventListener('mouseup', handleWindowMouseUp);
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerUp);
     };
   }, [draggingTentId, dragStart]);
 
-  // Handle Drag Start
-  const handleMouseDown = (e, tent) => {
-    if (!isSetupMode) return;
+  // Handle Drag Start (Strictly for Manager in Setup Mode)
+  const handlePointerDown = (e, tent) => {
+    if (!isSetupMode || mode !== 'manager' || !allowSetup) return;
     e.stopPropagation();
     e.preventDefault();
-    if (!mapContainerRef.current) return;
-    const rect = mapContainerRef.current.getBoundingClientRect();
+    if (!svgRef.current) return;
     
     const curPos = localPositions[tent.id] || { 
       top: tent.mapTop || '50%', 
@@ -141,28 +172,25 @@ export default function CampsiteMap({
     };
     const initLeftPercent = parseFloat(curPos.left) || 50;
     const initTopPercent = parseFloat(curPos.top) || 50;
+    const svgPt = getSvgCoordinates(e);
 
     setDraggingTentId(tent.id);
     setActiveSelectedParcel(tent);
     setDragStart({
-      clientX: e.clientX,
-      clientY: e.clientY,
+      startX: svgPt.x,
+      startY: svgPt.y,
       initialLeft: initLeftPercent,
-      initialTop: initTopPercent,
-      containerWidth: rect.width,
-      containerHeight: rect.height
+      initialTop: initTopPercent
     });
   };
 
-  // Handle Click on the Aerial Photo (e.g. Click to place a new slot)
+  // Handle Click on the Aerial Photo (e.g. Click to place a new slot - Manager only)
   const handleMapClick = (e) => {
-    if (!mapContainerRef.current) return;
-    if (isPlacingSlot && onAddTentAtSlot) {
-      const rect = mapContainerRef.current.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
-      const leftPercent = `${Math.min(95, Math.max(3, (clickX / rect.width) * 100)).toFixed(1)}%`;
-      const topPercent = `${Math.min(95, Math.max(5, (clickY / rect.height) * 100)).toFixed(1)}%`;
+    if (!svgRef.current) return;
+    if (isPlacingSlot && mode === 'manager' && onAddTentAtSlot) {
+      const svgPt = getSvgCoordinates(e);
+      const leftPercent = `${Math.min(95, Math.max(3, (svgPt.x / 1000) * 100)).toFixed(1)}%`;
+      const topPercent = `${Math.min(95, Math.max(5, (svgPt.y / 562.5) * 100)).toFixed(1)}%`;
 
       setIsPlacingSlot(false);
       const defaultZone = campingZones.find(z => z.id === activeZoneId) || campingZones[0];
@@ -354,6 +382,91 @@ export default function CampsiteMap({
     return !pos;
   });
 
+  // Connecting dashed links between slots sharing the same bookingId (Lều gộp)
+  const bookingConnections = useMemo(() => {
+    const map = {};
+    placedTents.forEach(tent => {
+      if (tent.status === 'Available') return;
+      const activeBooking = tent.activeBooking !== undefined
+        ? tent.activeBooking
+        : tent.bookings?.find(b => 
+            b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected'
+          );
+      const bId = activeBooking?.id;
+      if (!bId) return;
+
+      const pos = localPositions[tent.id] || { top: tent.mapTop, left: tent.mapLeft };
+      const topNum = parseFloat(pos?.top) || 0;
+      const leftNum = parseFloat(pos?.left) || 0;
+      const svgX = (leftNum / 100) * 1000;
+      const svgY = (topNum / 100) * 562.5;
+
+      if (!map[bId]) {
+        map[bId] = {
+          bookingId: bId,
+          status: tent.status,
+          slots: []
+        };
+      }
+      map[bId].slots.push({ id: tent.id, x: svgX, y: svgY });
+    });
+
+    const groups = [];
+    Object.values(map).forEach(g => {
+      if (g.slots.length < 2) return;
+
+      // Compute pairwise distances between all slots in the group
+      const edges = [];
+      for (let i = 0; i < g.slots.length; i++) {
+        for (let j = i + 1; j < g.slots.length; j++) {
+          const dx = g.slots[i].x - g.slots[j].x;
+          const dy = g.slots[i].y - g.slots[j].y;
+          edges.push({
+            p1: { x: g.slots[i].x, y: g.slots[i].y },
+            p2: { x: g.slots[j].x, y: g.slots[j].y },
+            dist: Math.hypot(dx, dy)
+          });
+        }
+      }
+
+      // Build Minimum Spanning Tree (Kruskal) to cleanly link all slots without redundant loops
+      edges.sort((a, b) => a.dist - b.dist);
+      const parent = {};
+      const find = (i) => {
+        if (parent[i] === undefined) parent[i] = i;
+        if (parent[i] === i) return i;
+        return (parent[i] = find(parent[i]));
+      };
+      const union = (i, j) => {
+        const rootI = find(i);
+        const rootJ = find(j);
+        if (rootI !== rootJ) {
+          parent[rootI] = rootJ;
+          return true;
+        }
+        return false;
+      };
+
+      const connections = [];
+      for (const edge of edges) {
+        const idx1 = g.slots.findIndex(s => s.x === edge.p1.x && s.y === edge.p1.y);
+        const idx2 = g.slots.findIndex(s => s.x === edge.p2.x && s.y === edge.p2.y);
+        if (union(idx1, idx2)) {
+          connections.push(edge);
+          if (connections.length === g.slots.length - 1) break;
+        }
+      }
+
+      groups.push({
+        bookingId: g.bookingId,
+        status: g.status,
+        connections
+      });
+    });
+
+    return groups;
+  }, [placedTents, localPositions]);
+
   return (
     <div className="space-y-6">
       {/* Top Filter & Controls Bar */}
@@ -408,8 +521,8 @@ export default function CampsiteMap({
             <span>Hiển Thị Ô Đất: <strong>{showPixelGrid ? 'BẬT' : 'TẮT'}</strong></span>
           </button>
 
-          {/* PROACTIVE SETUP MODE TOGGLE BUTTON */}
-          {allowSetup && mode !== 'customer' && (
+          {/* PROACTIVE SETUP MODE TOGGLE BUTTON - STRICTLY MANAGER ONLY */}
+          {allowSetup && mode === 'manager' && (
             <button
               type="button"
               onClick={() => {
@@ -435,8 +548,8 @@ export default function CampsiteMap({
         </div>
       </div>
 
-      {/* SETUP WORKBENCH TOOLBAR - ONLY SHOWN WHEN SETUP MODE IS ON */}
-      {isSetupMode && allowSetup && mode !== 'customer' && (
+      {/* SETUP WORKBENCH TOOLBAR - ONLY SHOWN FOR MANAGER WHEN SETUP MODE IS ON */}
+      {isSetupMode && allowSetup && mode === 'manager' && (
         <div className="bg-slate-900/95 backdrop-blur-md text-white p-4 rounded-3xl border-2 border-amber-400/80 shadow-2xl flex flex-wrap items-center justify-between gap-3 animate-in slide-in-from-top-3 duration-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-300 shrink-0">
@@ -526,23 +639,15 @@ export default function CampsiteMap({
       {/* Main Interactive Aerial Flycam Map Container */}
       <div 
         ref={mapContainerRef}
-        onClick={handleMapClick}
-        className={`w-full overflow-x-auto custom-scrollbar rounded-3xl shadow-2xl border-4 border-white bg-slate-950 relative ${
+        className={`w-full overflow-auto custom-scrollbar rounded-3xl shadow-2xl border-4 border-white bg-slate-950 relative ${
           isPlacingSlot ? 'cursor-crosshair' : ''
         }`}
       >
-        <div className="relative w-[1000px] lg:w-full aspect-[16/9] group select-none overflow-hidden">
-          {/* Aerial Flycam Map Image */}
-          <img 
-            src="/campsite-map-new.jpg" 
-            alt="Bản đồ flycam tương tác khu vực cắm trại Bùi Hui" 
-            className="w-full h-full object-cover object-center pointer-events-none"
-          />
-
-          {/* Vignette Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none" />
-
-          {/* Map Header Status Overlay */}
+        <div 
+          style={{ width: `${zoomLevel * 100}%`, minWidth: '100%' }}
+          className="relative aspect-[16/9] select-none transition-[width] duration-150 overflow-hidden"
+        >
+          {/* Map Header Status Overlay (Top-Left) */}
           <div className="absolute top-4 left-4 z-30 bg-slate-900/90 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl border border-white/20 shadow-lg flex items-center gap-3 pointer-events-auto">
             <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
             <div>
@@ -557,9 +662,45 @@ export default function CampsiteMap({
             </div>
           </div>
 
-          {/* Quick Setup Mode Toggle Button directly on top-right of Map */}
-          {allowSetup && mode !== 'customer' && !isPlacingSlot && (
-            <div className="absolute top-4 right-4 z-30 pointer-events-auto">
+          {/* Map Controls (Top-Right): Zoom & Setup Toggle */}
+          <div className="absolute top-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
+            {/* Map Zoom Controls */}
+            <div className="flex items-center gap-1 bg-slate-900/85 backdrop-blur-md text-white px-2 py-1.5 rounded-2xl border border-white/20 shadow-xl">
+              <button 
+                type="button" 
+                onClick={() => setZoomLevel(prev => Math.max(1, +(prev - 0.25).toFixed(2)))}
+                disabled={zoomLevel <= 1}
+                className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-30 transition-all text-slate-300 hover:text-white"
+                title="Thu nhỏ bản đồ"
+              >
+                <Minus size={13} />
+              </button>
+              <span className="text-[11px] font-mono font-bold px-1.5 min-w-[38px] text-center text-amber-300">
+                {Math.round(zoomLevel * 100)}%
+              </span>
+              <button 
+                type="button" 
+                onClick={() => setZoomLevel(prev => Math.min(2.5, +(prev + 0.25).toFixed(2)))}
+                disabled={zoomLevel >= 2.5}
+                className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-30 transition-all text-slate-300 hover:text-white"
+                title="Phóng to bản đồ"
+              >
+                <Plus size={13} />
+              </button>
+              {zoomLevel > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setZoomLevel(1)}
+                  className="text-[10px] px-1.5 py-0.5 ml-0.5 rounded-md bg-white/15 hover:bg-white/25 text-amber-300 font-bold"
+                  title="Về kích thước mặc định"
+                >
+                  <RotateCcw size={10} />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Setup Mode Toggle Button (Manager only) */}
+            {allowSetup && mode === 'manager' && !isPlacingSlot && (
               <button
                 type="button"
                 onClick={() => {
@@ -576,276 +717,702 @@ export default function CampsiteMap({
                 <Sliders size={14} className={isSetupMode ? 'text-slate-950' : 'text-amber-400'} />
                 <span>Setup: <strong>{isSetupMode ? 'BẬT' : 'TẮT'}</strong></span>
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Crosshair notice when placing slot */}
           {isPlacingSlot && (
-            <div className="absolute top-4 right-4 z-30 bg-amber-400 text-slate-950 font-black text-xs px-3.5 py-2 rounded-2xl shadow-xl border border-white flex items-center gap-2 animate-bounce">
+            <div className="absolute top-16 right-4 z-30 bg-amber-400 text-slate-950 font-black text-xs px-3.5 py-2 rounded-2xl shadow-xl border border-white flex items-center gap-2 animate-bounce">
               <Crosshair size={16} /> Nhấp chuột vào bất cứ đâu trên bãi cỏ để đặt ô đất mới
             </div>
           )}
 
-          {/* INDIVIDUAL LAND PARCEL BOXES OVERLAID DIRECTLY ON TERRAIN (Styled like user hand-drawn boxes) */}
-          {showPixelGrid && placedTents.map((tent) => {
+          {/* Pure SVG Vector Canvas */}
+          <svg 
+            ref={svgRef}
+            viewBox="0 0 1000 562.5"
+            preserveAspectRatio="xMidYMid meet"
+            onClick={handleMapClick}
+            className="w-full h-full block"
+          >
+            <defs>
+              {/* Premium Glow Filters */}
+              <filter id="slotGlow" x="-30%" y="-30%" width="160%" height="160%">
+                <feDropShadow dx="0" dy="0" stdDeviation="3.5" floodColor="#f59e0b" floodOpacity="0.85" />
+              </filter>
+              <filter id="amberGlow" x="-35%" y="-35%" width="170%" height="170%">
+                <feDropShadow dx="0" dy="0" stdDeviation="4.5" floodColor="#fbbf24" floodOpacity="0.9" />
+              </filter>
+              <filter id="roseGlow" x="-35%" y="-35%" width="170%" height="170%">
+                <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#f43f5e" floodOpacity="0.85" />
+              </filter>
+              <filter id="softEmeraldGlow" x="-30%" y="-30%" width="160%" height="160%">
+                <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#34d399" floodOpacity="0.6" />
+              </filter>
+              <filter id="boxDropShadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="1.5" stdDeviation="2" floodColor="#020617" floodOpacity="0.5" />
+              </filter>
+
+              {/* Gradients for Land Parcels (Transparent Frosted Glass Center + Colored Border) */}
+              {/* 1. Available: Translucent Frosted Glass with clear definition */}
+              <linearGradient id="availGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#0f172a" stopOpacity="0.16" />
+                <stop offset="100%" stopColor="#022c22" stopOpacity="0.24" />
+              </linearGradient>
+
+              {/* 2. Selected: Translucent Golden Amber Glass */}
+              <linearGradient id="selectedGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#b45309" stopOpacity="0.30" />
+                <stop offset="100%" stopColor="#78350f" stopOpacity="0.40" />
+              </linearGradient>
+
+              {/* 3. Booked: Translucent Cedar / Honey Bronze Glass */}
+              <linearGradient id="bookedGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#92400e" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="#451a03" stopOpacity="0.32" />
+              </linearGradient>
+
+              {/* 4. Occupied: Translucent Ruby Wine Rose Glass */}
+              <linearGradient id="occupiedGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#9f1239" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="#4c0519" stopOpacity="0.32" />
+              </linearGradient>
+
+              {/* Glass Top Highlight Shine */}
+              <linearGradient id="glassShine" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.14" />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+              </linearGradient>
+
+              {/* Terrain Vignette */}
+              <linearGradient id="vignetteGrad" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0%" stopColor="#000000" stopOpacity="0.4" />
+                <stop offset="35%" stopColor="#000000" stopOpacity="0.0" />
+                <stop offset="100%" stopColor="#000000" stopOpacity="0.25" />
+              </linearGradient>
+            </defs>
+
+            {/* 1. Aerial Flycam Image Layer */}
+            <image 
+              href="/campsite-map-new.jpg" 
+              x="0" 
+              y="0" 
+              width="1000" 
+              height="562.5" 
+              preserveAspectRatio="none" 
+              className="pointer-events-none select-none"
+            />
+
+            {/* 2. Terrain Vignette Overlay */}
+            <rect 
+              x="0" 
+              y="0" 
+              width="1000" 
+              height="562.5" 
+              fill="url(#vignetteGrad)" 
+              pointerEvents="none" 
+            />
+
+            {/* 3. Connecting Dashed Conduits between Grouped Slots (Lều gộp) */}
+            {showPixelGrid && bookingConnections.map(group => {
+              const isGroupHovered = hoveredBookingId === group.bookingId;
+              const isOccupiedGroup = group.status === 'Occupied';
+              const strokeColor = isOccupiedGroup ? '#f43f5e' : '#f59e0b';
+              const activeStroke = isOccupiedGroup ? '#fb7185' : '#fbbf24';
+
+              return (
+                <g key={group.bookingId} className="pointer-events-none">
+                  {group.connections.map((conn, cIdx) => (
+                    <line
+                      key={cIdx}
+                      x1={conn.p1.x}
+                      y1={conn.p1.y}
+                      x2={conn.p2.x}
+                      y2={conn.p2.y}
+                      stroke={isGroupHovered ? activeStroke : strokeColor}
+                      strokeWidth={isGroupHovered ? 2.5 : 1.8}
+                      strokeDasharray={isGroupHovered ? "4, 2" : "5, 4"}
+                      strokeLinecap="round"
+                      strokeOpacity={isGroupHovered ? 1 : 0.85}
+                      filter={isGroupHovered ? "url(#amberGlow)" : undefined}
+                    />
+                  ))}
+                </g>
+              );
+            })}
+
+            {/* 4. Individual Land Parcel SVG Slots */}
+            {showPixelGrid && placedTents.map((tent) => {
+              const curPos = localPositions[tent.id] || { top: tent.mapTop, left: tent.mapLeft };
+              const isSelected = selectedTentIds.includes(tent.id);
+              const isDragging = draggingTentId === tent.id;
+              const isHovered = hoveredSlot?.id === tent.id;
+              const isAvailable = tent.status === 'Available';
+              const isOccupied = !isAvailable && tent.status === 'Occupied';
+              const isBooked = !isAvailable && (tent.status === 'Booked' || tent.status === 'Pending');
+
+              const activeBooking = isAvailable 
+                ? null 
+                : (tent.activeBooking !== undefined 
+                    ? tent.activeBooking 
+                    : tent.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected'));
+              const tentBookingId = activeBooking?.id;
+
+              const groupedSiblingSlots = (!isAvailable && tentBookingId) 
+                ? placedTents.filter(t => {
+                    if (t.status === 'Available') return false;
+                    const bId = t.activeBooking !== undefined ? t.activeBooking?.id : t.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected')?.id;
+                    return bId === tentBookingId;
+                  })
+                : [];
+              const isGrouped = groupedSiblingSlots.length > 1;
+
+              const isLinkedToHoveredBooking = Boolean(hoveredBookingId && tentBookingId === hoveredBookingId);
+              const isDimmed = Boolean(hoveredBookingId && !isLinkedToHoveredBooking);
+
+              const displayCode = tent.slotCode || tent.name.replace(/^Lều\s+/i, '');
+              const canSetup = isSetupMode && mode === 'manager' && allowSetup;
+
+              // SVG Coordinate conversions
+              const cx = (parseFloat(curPos.left) / 100) * 1000;
+              const cy = (parseFloat(curPos.top) / 100) * 562.5;
+
+              // Palette parameters (Transparent Frosted Glass Center + Clearer, Refined Borders)
+              let fillGradient = isHovered ? 'rgba(16, 185, 129, 0.20)' : 'url(#availGrad)';
+              let strokeColor = isHovered ? '#10b981' : 'rgba(16, 185, 129, 0.72)'; // Clear emerald-mint border
+              let strokeWidth = isHovered ? 1.5 : 1.3;
+              let tentStrokeColor = isHovered ? '#a7f3d0' : 'rgba(167, 243, 208, 0.85)'; // Crisp mint tent outline
+              let tentFillColor = 'rgba(16, 185, 129, 0.10)';
+              let tentDoorColor = 'rgba(5, 150, 105, 0.35)';
+              let statusLabel = 'TRỐNG';
+              let statusTextColor = isHovered ? '#6ee7b7' : 'rgba(167, 243, 208, 0.88)'; // Legible mint
+
+              if (isOccupied) {
+                fillGradient = isHovered ? 'rgba(244, 63, 94, 0.30)' : 'url(#occupiedGrad)';
+                strokeColor = isHovered ? '#f43f5e' : 'rgba(244, 63, 94, 0.75)'; // Clear rose border
+                strokeWidth = isHovered ? 1.5 : 1.3;
+                tentStrokeColor = isHovered ? '#fb7185' : 'rgba(251, 113, 133, 0.85)';
+                tentFillColor = 'rgba(244, 63, 94, 0.12)';
+                tentDoorColor = 'rgba(253, 164, 175, 0.5)';
+                statusLabel = 'ĐANG Ở';
+                statusTextColor = isHovered ? '#fda4af' : 'rgba(253, 164, 175, 0.9)';
+              } else if (isBooked) {
+                fillGradient = isHovered ? 'rgba(245, 158, 11, 0.30)' : 'url(#bookedGrad)';
+                strokeColor = isHovered ? '#f59e0b' : 'rgba(245, 158, 11, 0.75)'; // Clear amber border
+                strokeWidth = isHovered ? 1.5 : 1.3;
+                tentStrokeColor = isHovered ? '#fde047' : 'rgba(253, 224, 71, 0.85)';
+                tentFillColor = 'rgba(245, 158, 11, 0.12)';
+                tentDoorColor = 'rgba(245, 158, 11, 0.5)';
+                statusLabel = 'ĐÃ CỌC';
+                statusTextColor = isHovered ? '#fde047' : 'rgba(253, 224, 71, 0.9)';
+              }
+
+              if (isSelected || isLinkedToHoveredBooking) {
+                fillGradient = 'url(#selectedGrad)';
+                strokeColor = '#fbbf24'; // Radiant golden amber border
+                strokeWidth = 2.0;
+                tentStrokeColor = '#ffffff';
+                tentFillColor = 'rgba(251, 191, 36, 0.25)';
+                tentDoorColor = '#fde047';
+                statusLabel = isSelected ? 'ĐANG CHỌN' : (isOccupied ? 'ĐANG Ở' : 'ĐÃ CỌC');
+                statusTextColor = '#fef08a';
+              }
+
+              const scale = isDragging ? 1.15 : (isHovered ? 1.08 : isSelected || isLinkedToHoveredBooking ? 1.05 : 1);
+
+              return (
+                <g
+                  key={tent.id}
+                  transform={`translate(${cx}, ${cy}) scale(${scale})`}
+                  onPointerDown={(e) => handlePointerDown(e, tent)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (canSetup) {
+                      setActiveSelectedParcel(tent);
+                    } else if (mode === 'manager' && onOpenTentDetail) {
+                      onOpenTentDetail(tent);
+                    } else if (onSelectTent) {
+                      onSelectTent(tent);
+                    }
+                  }}
+                  onMouseEnter={() => {
+                    setHoveredSlot(tent);
+                    if (tentBookingId) {
+                      setHoveredBookingId(tentBookingId);
+                    } else {
+                      setHoveredBookingId(null);
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredSlot(null);
+                    setHoveredBookingId(null);
+                  }}
+                  style={{
+                    cursor: canSetup ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
+                    opacity: isDimmed ? 0.25 : 1,
+                    transition: isDragging ? 'none' : 'transform 0.15s ease-out, opacity 0.2s ease'
+                  }}
+                  className="select-none"
+                >
+                  {/* Glowing Highlight Halo when Selected/Linked/Dragging */}
+                  {(isLinkedToHoveredBooking || isSelected || isDragging) && (
+                    <rect
+                      x={-29}
+                      y={-22.25}
+                      width={58}
+                      height={44.5}
+                      rx={8.5}
+                      fill="none"
+                      stroke={isDragging ? "#fde047" : "#fbbf24"}
+                      strokeWidth={isDragging ? 2.5 : 2}
+                      strokeDasharray={isDragging ? "4,2" : undefined}
+                      filter="url(#amberGlow)"
+                    />
+                  )}
+
+                  {/* Main Translucent Frosted Glass Parcel Box (Grass shines through) */}
+                  <rect
+                    x={-27}
+                    y={-20.25}
+                    width={54}
+                    height={40.5}
+                    rx={6.5}
+                    fill={fillGradient}
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    filter="url(#boxDropShadow)"
+                  />
+
+                  {/* Frosted Glass Top Reflection Highlight */}
+                  <rect
+                    x={-26}
+                    y={-19.25}
+                    width={52}
+                    height={14}
+                    rx={5.5}
+                    fill="url(#glassShine)"
+                    pointerEvents="none"
+                  />
+
+                  {/* Top Bar: Slot Code with Contrast Shadow */}
+                  <text
+                    x={-20}
+                    y={-11.5}
+                    fill="#ffffff"
+                    fontSize={7.5}
+                    fontWeight={900}
+                    fontFamily="ui-monospace, monospace"
+                    dominantBaseline="central"
+                    style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.95))' }}
+                  >
+                    {displayCode}
+                  </text>
+
+                  {/* Top-Right Badge: Group or Single Status Indicator */}
+                  {isGrouped ? (
+                    <g>
+                      <rect
+                        x={3}
+                        y={-16.5}
+                        width={21}
+                        height={9}
+                        rx={3}
+                        fill={isOccupied ? "rgba(244, 63, 94, 0.9)" : "rgba(245, 158, 11, 0.9)"}
+                      />
+                      <text
+                        x={13.5}
+                        y={-12}
+                        fill="#ffffff"
+                        fontSize={5.2}
+                        fontWeight={900}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                      >
+                        GỘP {groupedSiblingSlots.length}
+                      </text>
+                    </g>
+                  ) : isSelected ? (
+                    <g>
+                      <rect
+                        x={5}
+                        y={-16.5}
+                        width={19}
+                        height={8.5}
+                        rx={3}
+                        fill="#f59e0b"
+                      />
+                      <text
+                        x={14.5}
+                        y={-12}
+                        fill="#020617"
+                        fontSize={5.2}
+                        fontWeight={900}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                      >
+                        ✓ CHỌN
+                      </text>
+                    </g>
+                  ) : isOccupied ? (
+                    <g>
+                      <rect
+                        x={6}
+                        y={-16.5}
+                        width={18}
+                        height={8.5}
+                        rx={3}
+                        fill="rgba(244, 63, 94, 0.2)"
+                        stroke="rgba(244, 63, 94, 0.6)"
+                        strokeWidth="0.7"
+                      />
+                      <text
+                        x={15}
+                        y={-12}
+                        fill="#fda4af"
+                        fontSize={5.2}
+                        fontWeight={800}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        style={{ filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,0.8))' }}
+                      >
+                        Ở
+                      </text>
+                    </g>
+                  ) : isBooked ? (
+                    <g>
+                      <rect
+                        x={5}
+                        y={-16.5}
+                        width={19}
+                        height={8.5}
+                        rx={3}
+                        fill="rgba(245, 158, 11, 0.2)"
+                        stroke="rgba(245, 158, 11, 0.6)"
+                        strokeWidth="0.7"
+                      />
+                      <text
+                        x={14.5}
+                        y={-12}
+                        fill="#fde047"
+                        fontSize={5.2}
+                        fontWeight={800}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        style={{ filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,0.8))' }}
+                      >
+                        CỌC
+                      </text>
+                    </g>
+                  ) : (
+                    <g>
+                      <rect
+                        x={5.5}
+                        y={-16.5}
+                        width={19}
+                        height={8.5}
+                        rx={3}
+                        fill="rgba(16, 185, 129, 0.15)"
+                        stroke="rgba(52, 211, 153, 0.55)"
+                        strokeWidth="0.7"
+                      />
+                      <text
+                        x={15}
+                        y={-12}
+                        fill="#a7f3d0"
+                        fontSize={5.2}
+                        fontWeight={800}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        style={{ filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,0.8))' }}
+                      >
+                        3m²
+                      </text>
+                    </g>
+                  )}
+
+                  {/* Center Illustration: Move handle in Setup mode, or Authentic Glamping Tent */}
+                  {canSetup ? (
+                    <g transform="translate(0, 0)">
+                      <circle cx={0} cy={0} r={5.5} fill="#f59e0b" fillOpacity={0.25} stroke="#fde047" strokeWidth="0.8" />
+                      <path d="M0 -4 L-2 -1.5 L-0.8 -1.5 L-0.8 1.5 L-2 1.5 L0 4 L2 1.5 L0.8 1.5 L0.8 -1.5 L2 -1.5 Z" fill="#fde047" />
+                      <path d="M-4 0 L-1.5 -2 L-1.5 -0.8 L1.5 -0.8 L1.5 -2 L4 0 L1.5 2 L1.5 0.8 L-1.5 0.8 L-1.5 2 Z" fill="#fde047" />
+                    </g>
+                  ) : (
+                    <g transform="translate(0, 0.5)" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }}>
+                      {/* Tent main canopy */}
+                      <path
+                        d="M -7.5 4.5 L 0 -5.5 L 7.5 4.5 Z"
+                        fill={tentFillColor}
+                        stroke={tentStrokeColor}
+                        strokeWidth={1.15}
+                        strokeLinejoin="round"
+                      />
+                      {/* Tent illuminated inner doorway */}
+                      <path
+                        d="M -3 4.5 L 0 -0.5 L 3 4.5 Z"
+                        fill={tentDoorColor}
+                        stroke={tentStrokeColor}
+                        strokeWidth={0.8}
+                        strokeLinejoin="round"
+                      />
+                      {/* Ridge pole vertical seam */}
+                      <line
+                        x1="0"
+                        y1="-5.5"
+                        x2="0"
+                        y2="-0.5"
+                        stroke={tentStrokeColor}
+                        strokeWidth={0.8}
+                        strokeLinecap="round"
+                      />
+                      {/* Ground peg baseline */}
+                      <line
+                        x1="-9"
+                        y1="4.5"
+                        x2="9"
+                        y2="4.5"
+                        stroke={tentStrokeColor}
+                        strokeWidth={0.9}
+                        strokeLinecap="round"
+                      />
+                    </g>
+                  )}
+
+                  {/* Delicate Divider Line */}
+                  <line x1="-18" y1="8" x2="18" y2="8" stroke="rgba(255,255,255,0.12)" strokeWidth={0.5} />
+
+                  {/* Footer: Centered Status Text with Drop Shadow */}
+                  <text
+                    x={0}
+                    y={13.5}
+                    fill={statusTextColor}
+                    fontSize={5.4}
+                    fontWeight={800}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    letterSpacing="0.14em"
+                    style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.85))' }}
+                  >
+                    {statusLabel}
+                  </text>
+
+                  {/* Live Dragging Floating Badge */}
+                  {isDragging && (
+                    <g transform="translate(0, -29)">
+                      <rect
+                        x={-27}
+                        y={-7.5}
+                        width={54}
+                        height={15}
+                        rx={7.5}
+                        fill="#f59e0b"
+                        stroke="#ffffff"
+                        strokeWidth={1.5}
+                        filter="url(#boxDropShadow)"
+                      />
+                      <text
+                        x={0}
+                        y={0.5}
+                        fill="#020617"
+                        fontSize={7}
+                        fontWeight={900}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                      >
+                        {curPos.top}, {curPos.left}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+
+            {/* 5. Facility Landmarks */}
+            {facilityHotspots.map(spot => {
+              const spotX = (parseFloat(spot.left) / 100) * 1000;
+              const spotY = (parseFloat(spot.top) / 100) * 562.5;
+
+              return (
+                <g key={spot.id} transform={`translate(${spotX}, ${spotY})`} className="pointer-events-none select-none">
+                  <rect 
+                    x={-56} 
+                    y={-11} 
+                    width={112} 
+                    height={22} 
+                    rx={11} 
+                    fill="#0f172a" 
+                    fillOpacity={0.85} 
+                    stroke="#ffffff" 
+                    strokeWidth={1}
+                    strokeOpacity={0.3}
+                    filter="url(#boxDropShadow)"
+                  />
+                  <path 
+                    d="M-43 -4 C-46 -4 -48 -2 -48 1 C-48 4.5 -43 8 -43 8 C-43 8 -38 4.5 -38 1 C-38 -2 -40 -4 -43 -4 Z" 
+                    fill="#f59e0b" 
+                  />
+                  <circle cx={-43} cy={1} r={1.5} fill="#ffffff" />
+                  <text 
+                    x={-34} 
+                    y={1} 
+                    fill="#f8fafc" 
+                    fontSize={7.2} 
+                    fontWeight={800} 
+                    dominantBaseline="central"
+                  >
+                    {spot.name}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Floating Interactive HTML Hover Tooltip Layer - Strictly for Booked / Occupied Slots Only */}
+          {!isSetupMode && hoveredSlot && (hoveredSlot.status !== 'Available' || (hoveredSlot.activeBooking && hoveredSlot.activeBooking.id)) && (() => {
+            const tent = hoveredSlot;
             const curPos = localPositions[tent.id] || { top: tent.mapTop, left: tent.mapLeft };
-            const isSelected = selectedTentIds.includes(tent.id);
-            const isDragging = draggingTentId === tent.id;
-            const isHovered = hoveredSlot?.id === tent.id;
-            const isActiveParcel = activeSelectedParcel?.id === tent.id;
-            const isAvailable = tent.status === 'Available';
             const isOccupied = tent.status === 'Occupied';
             const isBooked = tent.status === 'Booked' || tent.status === 'Pending';
 
-            // Active booking detection
-            const activeBooking = tent.activeBooking || tent.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected');
+            const activeBooking = tent.activeBooking !== undefined 
+              ? tent.activeBooking 
+              : tent.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected');
             const tentBookingId = activeBooking?.id;
 
-            // Sibling slots belonging to the same booking across all placed tents
             const groupedSiblingSlots = tentBookingId 
               ? placedTents.filter(t => {
-                  const bId = t.activeBooking?.id || t.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected')?.id;
+                  if (t.status === 'Available') return false;
+                  const bId = t.activeBooking !== undefined ? t.activeBooking?.id : t.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected')?.id;
                   return bId === tentBookingId;
                 })
               : [];
             const isGrouped = groupedSiblingSlots.length > 1;
-
-            // Linked Hover: if any slot of this booking is hovered, highlight all slots in this booking simultaneously
-            const isLinkedToHoveredBooking = Boolean(hoveredBookingId && tentBookingId === hoveredBookingId);
-            const isDimmed = Boolean(hoveredBookingId && !isLinkedToHoveredBooking);
-
-            // Single standardized unit box dimension (~3m² minimum unit parcel)
-            const boxDim = 'w-[5.4%] min-w-[50px] aspect-[4/3]';
             const displayCode = tent.slotCode || tent.name.replace(/^Lều\s+/i, '');
 
+            const topPercent = parseFloat(curPos.top) || 50;
+            const isNearTop = topPercent < 26;
+
             return (
-              <div
-                key={tent.id}
+              <div 
                 style={{
                   top: curPos.top,
                   left: curPos.left,
-                  transform: 'translate(-50%, -50%)',
+                  transform: isNearTop ? 'translate(-50%, 25px)' : 'translate(-50%, -100%)',
+                  marginTop: isNearTop ? '15px' : '-20px'
                 }}
-                onMouseDown={(e) => handleMouseDown(e, tent)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isSetupMode) {
-                    setActiveSelectedParcel(tent);
-                  } else if (mode === 'manager' && onOpenTentDetail) {
-                    onOpenTentDetail(tent);
-                  } else if (onSelectTent) {
-                    onSelectTent(tent);
-                  }
-                }}
-                onMouseEnter={() => {
-                  setHoveredSlot(tent);
-                  if (tentBookingId) {
-                    setHoveredBookingId(tentBookingId);
-                  } else {
-                    setHoveredBookingId(null);
-                  }
-                }}
+                onMouseEnter={() => setHoveredSlot(tent)}
                 onMouseLeave={() => {
                   setHoveredSlot(null);
                   setHoveredBookingId(null);
                 }}
-                className={`absolute z-20 select-none rounded-xl transition-all duration-200 flex flex-col justify-between p-1 shadow-lg ${boxDim} ${
-                  isDragging 
-                    ? 'cursor-grabbing scale-110 z-50 ring-4 ring-amber-300 shadow-2xl bg-amber-950/80 border-2 border-white' 
-                    : isSetupMode 
-                      ? 'cursor-grab hover:scale-105 hover:z-30' 
-                      : 'cursor-pointer hover:scale-105 hover:z-30'
-                } ${
-                  isLinkedToHoveredBooking
-                    ? 'ring-4 ring-amber-400 bg-amber-950/95 border-2 border-white shadow-[0_0_25px_rgba(251,191,36,0.95)] scale-110 z-40'
-                    : isDimmed
-                      ? 'opacity-30 scale-95 transition-all duration-200'
-                      : isSelected
-                        ? 'bg-amber-900/90 border-2 border-amber-300 ring-4 ring-amber-400/80 shadow-2xl scale-105 z-30'
-                        : isOccupied
-                          ? 'bg-rose-950/75 border-2 border-rose-400 text-rose-100'
-                          : isBooked
-                            ? 'bg-amber-950/75 border-2 border-amber-400 text-amber-100'
-                            : 'bg-sky-950/60 border-2 border-sky-400 text-sky-100 shadow-[0_0_14px_rgba(56,189,248,0.3)] hover:border-white'
-                }`}
-                title={`Ô ${displayCode} (${isGrouped ? `Lều Gộp ${groupedSiblingSlots.length} ô` : 'Ô Chuẩn ~3m²'})`}
+                className={`absolute z-50 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3.5 shadow-2xl border ${
+                  isGrouped ? 'border-amber-400 w-64 ring-2 ring-amber-400/40' : 'border-white/20 w-56'
+                } text-left animate-in zoom-in-95 duration-150 pointer-events-auto`}
               >
-                {/* Header: Slot Code + Grouped / Size Tag */}
-                <div className="flex items-center justify-between text-[9px] font-mono font-black pointer-events-none leading-none">
-                  <span className="truncate text-white drop-shadow-sm font-extrabold">
-                    {displayCode}
-                  </span>
-                  {isGrouped ? (
-                    <span className="text-[7px] px-1 py-0.2 rounded font-black uppercase bg-amber-400 text-slate-950 shadow-xs">
-                      Gộp {groupedSiblingSlots.length} ô
-                    </span>
-                  ) : (
-                    <span className="text-[7px] px-1 py-0.2 rounded font-bold uppercase bg-emerald-600/80 text-white">
-                      ~3m²
-                    </span>
-                  )}
-                </div>
-
-                {/* Center: Tent Icon or Drag Handle */}
-                <div className="my-auto flex items-center justify-center pointer-events-none">
-                  {isSetupMode ? (
-                    <div className="flex items-center gap-0.5 text-amber-300 font-bold text-[8px]">
-                      <Move size={10} />
-                      <span className="text-[7px] font-mono">{curPos.top?.replace('%', '')}</span>
+                {isGrouped && activeBooking ? (
+                  <>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-black text-xs text-amber-300 flex items-center gap-1.5">
+                        <Sparkles size={14} className="text-amber-400" />
+                        LỀU GỘP ({groupedSiblingSlots.length} Ô ĐẤT)
+                      </span>
+                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border ${
+                        isOccupied ? 'bg-rose-500/30 text-rose-300 border-rose-400/40' : 'bg-amber-500/30 text-amber-300 border-amber-400/40'
+                      }`}>
+                        {isOccupied ? 'Đang Ở' : 'Đã Đặt Cọc'}
+                      </span>
                     </div>
-                  ) : (
-                    <Tent size={12} className={isLinkedToHoveredBooking || isSelected ? 'text-amber-300 animate-pulse' : isOccupied ? 'text-rose-300' : isBooked ? 'text-amber-300' : 'text-sky-300'} />
-                  )}
-                </div>
-
-                {/* Footer: Status / Price */}
-                <div className="flex items-center justify-between text-[7px] font-bold border-t border-white/20 pt-0.5 pointer-events-none">
-                  <span className="truncate">
-                    {isOccupied ? 'Đang ở' : isBooked ? 'Đã cọc' : 'Trống'}
-                  </span>
-                  <span className="text-white/80 font-mono">
-                    {isGrouped ? `Lều gộp` : `~3m²`}
-                  </span>
-                </div>
-
-                {/* Live Floating Coordinates Badge when Dragging */}
-                {isDragging && (
-                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-amber-400 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow-lg pointer-events-none whitespace-nowrap z-50">
-                    {curPos.top}, {curPos.left}
-                  </div>
+                    <div className="text-[10px] text-slate-300 space-y-1 mt-1 border-t border-white/10 pt-1.5 font-medium">
+                      <p className="text-white font-bold">
+                        Các ô: <span className="text-amber-300 font-mono">{groupedSiblingSlots.map(s => s.slotCode || s.name.replace(/^Lều\s+/i, '')).join(' + ')}</span> (~{groupedSiblingSlots.length * 3}m²)
+                      </p>
+                      {activeBooking.tentSetupSummary && (
+                        <p className="text-amber-300 font-bold bg-amber-950/70 p-1 rounded-lg border border-amber-500/30 flex items-center gap-1">
+                          <span>⛺ Setup:</span>
+                          <span className="text-white">{activeBooking.tentSetupSummary}</span>
+                        </p>
+                      )}
+                      <p>Khách: <strong className="text-emerald-300">{activeBooking.customerName || 'Khách đặt'}</strong> {activeBooking.phoneNumber ? `(${activeBooking.phoneNumber})` : ''}</p>
+                      <p>Hình thức: <strong>{activeBooking.bookingType === 'Hourly' ? 'Thuê theo giờ' : 'Thuê qua đêm'}</strong></p>
+                      {activeBooking.depositAmount > 0 && (
+                        <p>Đã cọc: <strong className="text-amber-400">{activeBooking.depositAmount.toLocaleString('vi-VN')}đ</strong></p>
+                      )}
+                    </div>
+                    <div className="mt-2 text-[9px] text-amber-300/95 font-semibold bg-amber-950/70 px-2 py-1 rounded-lg border border-amber-500/30 flex items-center gap-1">
+                      <Info size={11} /> Cả {groupedSiblingSlots.length} ô này thuộc cùng 1 đơn đặt lều!
+                    </div>
+                  </>
+                ) : activeBooking ? (
+                  <>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-extrabold text-xs text-amber-300">
+                        Ô {displayCode} (~3m²)
+                      </span>
+                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border ${
+                        isOccupied ? 'bg-rose-500/30 text-rose-300 border-rose-400/40' : 'bg-amber-500/30 text-amber-300 border-amber-400/40'
+                      }`}>
+                        {isOccupied ? 'Đang Ở' : 'Đã Đặt Cọc'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-300 space-y-0.5 mt-1 border-t border-white/10 pt-1 font-medium">
+                      {activeBooking.tentSetupSummary && (
+                        <p className="text-amber-300 font-bold bg-amber-950/70 p-1 rounded-lg border border-amber-500/30 flex items-center gap-1 mb-1">
+                          <span>⛺ Setup:</span>
+                          <span className="text-white">{activeBooking.tentSetupSummary}</span>
+                        </p>
+                      )}
+                      <p>Khách: <strong className="text-emerald-300">{activeBooking.customerName || 'Khách đặt'}</strong> {activeBooking.phoneNumber ? `(${activeBooking.phoneNumber})` : ''}</p>
+                      <p>Hình thức: <strong>{activeBooking.bookingType === 'Hourly' ? 'Thuê theo giờ' : 'Thuê qua đêm'}</strong></p>
+                      {activeBooking.depositAmount > 0 && (
+                        <p>Đã cọc: <strong className="text-amber-400">{activeBooking.depositAmount.toLocaleString('vi-VN')}đ</strong></p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-extrabold text-xs text-amber-300">
+                        Ô {displayCode} (~3m²)
+                      </span>
+                      <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase bg-amber-500/30 text-amber-300 border border-amber-400/40">
+                        {isOccupied ? 'Đang Ở' : 'Đã Đặt Cọc'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-300 mt-1">
+                      Ô đất hiện đang có đơn đặt lưu trú.
+                    </p>
+                  </>
                 )}
 
-                {/* Hover Tooltip in Normal View */}
-
-                {!isSetupMode && isHovered && (
-                  <div 
-                    onClick={(e) => e.stopPropagation()}
-                    className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3 shadow-2xl border ${
-                      isGrouped ? 'border-amber-400 w-64 ring-2 ring-amber-400/40' : 'border-white/20 w-56'
-                    } z-50 text-left animate-in zoom-in-95 duration-150 ${
-                      mode === 'manager' ? 'pointer-events-auto' : 'pointer-events-none'
-                    }`}
-                  >
-                    {isGrouped && activeBooking ? (
-                      <>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="font-black text-xs text-amber-300 flex items-center gap-1.5">
-                            <Sparkles size={14} className="text-amber-400" />
-                            LỀU GỘP ({groupedSiblingSlots.length} Ô ĐẤT)
-                          </span>
-                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border ${
-                            isOccupied ? 'bg-rose-500/30 text-rose-300 border-rose-400/40' : 'bg-amber-500/30 text-amber-300 border-amber-400/40'
-                          }`}>
-                            {isOccupied ? 'Đang Ở' : 'Đã Đặt Cọc'}
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-slate-300 space-y-1 mt-1 border-t border-white/10 pt-1.5 font-medium">
-                          <p className="text-white font-bold">
-                            Các ô: <span className="text-amber-300 font-mono">{groupedSiblingSlots.map(s => s.slotCode || s.name.replace(/^Lều\s+/i, '')).join(' + ')}</span> (~{groupedSiblingSlots.length * 3}m²)
-                          </p>
-                          {activeBooking.tentSetupSummary && (
-                            <p className="text-amber-300 font-bold bg-amber-950/70 p-1 rounded-lg border border-amber-500/30 flex items-center gap-1">
-                              <span>⛺ Setup:</span>
-                              <span className="text-white">{activeBooking.tentSetupSummary}</span>
-                            </p>
-                          )}
-                          <p>Khách: <strong className="text-emerald-300">{activeBooking.customerName || 'Khách đặt'}</strong> {activeBooking.phoneNumber ? `(${activeBooking.phoneNumber})` : ''}</p>
-                          <p>Hình thức: <strong>{activeBooking.bookingType === 'Hourly' ? 'Thuê theo giờ' : 'Thuê qua đêm'}</strong></p>
-                          {activeBooking.depositAmount > 0 && (
-                            <p>Đã cọc: <strong className="text-amber-400">{activeBooking.depositAmount.toLocaleString('vi-VN')}đ</strong></p>
-                          )}
-                        </div>
-                        <div className="mt-2 text-[9px] text-amber-300/95 font-semibold bg-amber-950/70 px-2 py-1 rounded-lg border border-amber-500/30 flex items-center gap-1">
-                          <Info size={11} /> Cả {groupedSiblingSlots.length} ô này thuộc cùng 1 đơn đặt lều!
-                        </div>
-                      </>
-                    ) : activeBooking ? (
-                      <>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="font-extrabold text-xs text-sky-300">
-                            Ô {displayCode} (~3m²)
-                          </span>
-                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border ${
-                            isOccupied ? 'bg-rose-500/30 text-rose-300 border-rose-400/40' : 'bg-amber-500/30 text-amber-300 border-amber-400/40'
-                          }`}>
-                            {isOccupied ? 'Đang Ở' : 'Đã Đặt Cọc'}
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-slate-300 space-y-0.5 mt-1 border-t border-white/10 pt-1 font-medium">
-                          {activeBooking.tentSetupSummary && (
-                            <p className="text-amber-300 font-bold bg-amber-950/70 p-1 rounded-lg border border-amber-500/30 flex items-center gap-1 mb-1">
-                              <span>⛺ Setup:</span>
-                              <span className="text-white">{activeBooking.tentSetupSummary}</span>
-                            </p>
-                          )}
-                          <p>Khách: <strong className="text-emerald-300">{activeBooking.customerName || 'Khách đặt'}</strong> {activeBooking.phoneNumber ? `(${activeBooking.phoneNumber})` : ''}</p>
-                          <p>Hình thức: <strong>{activeBooking.bookingType === 'Hourly' ? 'Thuê theo giờ' : 'Thuê qua đêm'}</strong></p>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="font-extrabold text-xs text-emerald-300">
-                            Ô Đất {displayCode}
-                          </span>
-                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 uppercase">
-                            Đất Trống
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-300">
-                          Ô quy chuẩn đơn vị nhỏ nhất (~3m²).
-                        </p>
-                        <p className="text-[9px] text-emerald-400 font-bold mt-1">
-                          + Nhấp để chọn (có thể chọn nhiều ô để gộp dựng lều lớn).
-                        </p>
-                      </>
-                    )}
-
-                    {mode === 'manager' && (
-                      <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-white/15">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onOpenTentDetail) onOpenTentDetail(tent);
-                          }}
-                          className="flex-1 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] flex items-center justify-center gap-1 shadow-sm transition-all"
-                          title="Chỉnh sửa ô đất"
-                        >
-                          <Edit size={11} /> Sửa Ô Đất
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onDeleteTent) onDeleteTent(tent);
-                          }}
-                          className="py-1.5 px-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] flex items-center justify-center gap-1 shadow-sm transition-all"
-                          title="Xóa ô đất"
-                        >
-                          <Trash2 size={11} /> Xóa
-                        </button>
-                      </div>
-                    )}
+                {mode === 'manager' && (
+                  <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-white/15">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onOpenTentDetail) onOpenTentDetail(tent);
+                      }}
+                      className="flex-1 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] flex items-center justify-center gap-1 shadow-sm transition-all"
+                      title="Chỉnh sửa ô đất"
+                    >
+                      <Edit size={11} /> Sửa Ô Đất
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onDeleteTent) onDeleteTent(tent);
+                      }}
+                      className="py-1.5 px-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] flex items-center justify-center gap-1 shadow-sm transition-all"
+                      title="Xóa ô đất"
+                    >
+                      <Trash2 size={11} /> Xóa
+                    </button>
                   </div>
                 )}
               </div>
             );
-          })}
-
-          {/* Facility & Amenity Hotspots */}
-          {facilityHotspots.map(spot => (
-            <div 
-              key={spot.id}
-              style={{ top: spot.top, left: spot.left }}
-              className="absolute z-10 -translate-x-1/2 -translate-y-1/2 cursor-default pointer-events-none"
-            >
-              <div className={`px-2.5 py-1 rounded-xl text-white/90 font-bold text-[10px] shadow-lg border border-white/20 backdrop-blur-md flex items-center gap-1.5 ${spot.color}`}>
-                <MapPin size={10} className="text-amber-300" />
-                <span>{spot.name}</span>
-              </div>
-            </div>
-          ))}
+          })()}
         </div>
       </div>
 
@@ -853,25 +1420,25 @@ export default function CampsiteMap({
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white rounded-2xl p-4 border border-slate-200 text-xs font-semibold text-slate-600 shadow-sm">
         <div className="flex flex-wrap items-center gap-6">
           <span className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 rounded-md border-2 border-sky-400 bg-sky-950/60 inline-block shadow-xs"></span>
+            <span className="w-3.5 h-3.5 rounded-md border-2 border-emerald-500 bg-emerald-500/20 inline-block shadow-xs"></span>
             Ô đất trống (~3m² quy chuẩn)
           </span>
           <span className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 rounded-md border-2 border-amber-300 bg-amber-900/90 inline-block shadow-xs"></span>
+            <span className="w-3.5 h-3.5 rounded-md border-2 border-amber-400 bg-amber-400/25 inline-block shadow-xs"></span>
             Ô đang chọn (Tick nhiều ô để gộp)
           </span>
           <span className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 rounded-md bg-amber-600 inline-block shadow-xs"></span>
+            <span className="w-3.5 h-3.5 rounded-md border-2 border-amber-500 bg-amber-500/20 inline-block shadow-xs"></span>
             Lều đã cọc / Lều gộp
           </span>
           <span className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 rounded-md bg-rose-600 inline-block shadow-xs"></span>
+            <span className="w-3.5 h-3.5 rounded-md border-2 border-rose-500 bg-rose-500/20 inline-block shadow-xs"></span>
             Đang có khách lưu trú
           </span>
         </div>
         <div className="text-slate-500 text-[11px] font-medium flex items-center gap-1.5">
           <Sparkles size={14} className="text-amber-500" />
-          <span>* Di chuột vào ô đã đặt để phát sáng toàn bộ các ô thuộc cùng 1 đơn đặt lều gộp</span>
+          <span>* Rà chuột vào các ô đã đặt để xem thông tin đơn & phát sáng các ô thuộc cùng 1 lều</span>
         </div>
       </div>
 

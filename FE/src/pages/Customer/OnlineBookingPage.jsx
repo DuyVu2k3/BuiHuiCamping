@@ -240,8 +240,28 @@ export default function OnlineBookingPage() {
     };
   }, []);
 
+  const parseDateTimeSafe = (dtStr, defaultTime = "12:00") => {
+    if (!dtStr) return null;
+    let cleanStr = typeof dtStr === "string" ? dtStr.trim() : new Date(dtStr).toISOString();
+    if (cleanStr.length === 10) {
+      cleanStr = `${cleanStr}T${defaultTime}:00`;
+    }
+    if (cleanStr.endsWith("Z")) {
+      cleanStr = cleanStr.slice(0, -1);
+    }
+    const d = new Date(cleanStr);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   // Calculate date & time-effective tent availability for selected CheckIn & CheckOut exact timestamps
   const effectiveTents = tents.map((tent) => {
+    let targetIn = parseDateTimeSafe(`${checkInDate}T${checkInTime}:00`);
+    let targetOut = parseDateTimeSafe(`${checkOutDate}T${checkOutTime}:00`);
+    if (!targetIn) targetIn = new Date();
+    if (!targetOut || targetOut <= targetIn) {
+      targetOut = new Date(targetIn.getTime() + 3600000);
+    }
+
     const activeBooking = tent.bookings?.find((b) => {
       if (
         b.status === "CheckedOut" ||
@@ -249,44 +269,46 @@ export default function OnlineBookingPage() {
         b.status === "Rejected"
       )
         return false;
-      if (!b.checkInDate || !b.checkOutDate) return true;
+      if (!b.checkInDate) return false;
 
       // Parse existing booking timestamps
-      let bIn = new Date(b.checkInDate);
-      let bOut = new Date(b.checkOutDate);
+      let bIn = parseDateTimeSafe(b.checkInDate, "14:00");
+      let bOut = parseDateTimeSafe(b.checkOutDate, "12:00");
+      if (!bIn) return false;
+
+      if (!bOut) {
+        if (b.bookingType === 'Hourly') {
+          const hrs = b.estimatedHours > 0 ? b.estimatedHours : 2;
+          bOut = new Date(bIn.getTime() + hrs * 3600000);
+        } else {
+          bOut = new Date(bIn.getTime() + 86400000);
+          bOut.setHours(12, 0, 0, 0);
+        }
+      }
 
       // Legacy fallback: If DB row stored midnight 00:00:00, normalize to standard resort hours (14:00 & 12:00)
-      if (bIn.getHours() === 0 && bIn.getMinutes() === 0) {
-        const datePart =
-          typeof b.checkInDate === "string"
-            ? b.checkInDate.split("T")[0]
-            : bIn.toISOString().split("T")[0];
+      if (b.bookingType !== 'Hourly' && bIn.getHours() === 0 && bIn.getMinutes() === 0) {
+        const datePart = typeof b.checkInDate === "string" ? b.checkInDate.split("T")[0] : bIn.toISOString().split("T")[0];
         bIn = new Date(`${datePart}T14:00:00`);
       }
-      if (bOut.getHours() === 0 && bOut.getMinutes() === 0) {
-        const datePart =
-          typeof b.checkOutDate === "string"
-            ? b.checkOutDate.split("T")[0]
-            : bOut.toISOString().split("T")[0];
+      if (b.bookingType !== 'Hourly' && bOut.getHours() === 0 && bOut.getMinutes() === 0) {
+        const datePart = typeof b.checkOutDate === "string" ? b.checkOutDate.split("T")[0] : bOut.toISOString().split("T")[0];
         bOut = new Date(`${datePart}T12:00:00`);
       }
-
-      // Target search timestamps with exact hours & minutes
-      const targetIn = new Date(`${checkInDate}T${checkInTime}:00`);
-      const targetOut = new Date(`${checkOutDate}T${checkOutTime}:00`);
 
       // Overlap condition: bIn < targetOut && bOut > targetIn
       return bIn < targetOut && bOut > targetIn;
     });
 
     const status = activeBooking
-      ? activeBooking.status || tent.status
+      ? activeBooking.status || "Booked"
       : "Available";
 
     return {
       ...tent,
       status,
-      activeBooking,
+      activeBooking: activeBooking || null,
+      bookings: activeBooking ? [activeBooking] : [],
     };
   });
 

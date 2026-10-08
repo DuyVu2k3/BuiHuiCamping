@@ -281,30 +281,59 @@ export default function WaiterOrdersPage() {
   };
 
   const getLocationFormatted = (order) => {
-    const tent = order.tent;
-    if (!tent) return "Vị Trí Chưa Xác Định";
+    const tent = order?.tent;
+    const booking = order?.booking;
+    if (!tent) return { icon: "📍", text: "Vị Trí Chưa Xác Định", isTable: false, primaryTitle: "Chưa xác định", secondaryDetail: null, zoneTitle: "" };
 
-    const zoneNameRaw = tent.zoneName || tent.zone?.name || "";
-    const tentNameRaw = tent.name || "";
+    const rawZone = tent.zoneName || tent.zone?.name || "";
+    const rawTentName = tent.name || "";
+    const slotCode = tent.slotCode || rawTentName;
+    const zoneType = tent.zoneType || tent.zone?.zoneType || "";
 
-    const isTable = (tent.zone?.zoneType === 'DiningTable') || 
+    const zoneLower = rawZone.toLowerCase();
+    const nameLower = rawTentName.toLowerCase();
+
+    const isTable = (zoneType === 'DiningTable') || 
                     (tent.tentType && (tent.tentType.toLowerCase().includes('bàn') || tent.tentType.toLowerCase().includes('tiệc'))) ||
-                    zoneNameRaw.toLowerCase().includes('bàn') ||
-                    zoneNameRaw.toLowerCase().includes('ẩm thực') ||
-                    zoneNameRaw.toLowerCase().includes('nhà hàng') ||
-                    zoneNameRaw.toLowerCase().includes('ăn uống') ||
-                    tentNameRaw.toLowerCase().includes('bàn');
+                    zoneLower.includes("bàn") || zoneLower.includes("ẩm thực") || 
+                    zoneLower.includes("nhà hàng") || zoneLower.includes("ăn uống") || 
+                    nameLower.includes("bàn");
 
-    const zoneFormatted = zoneNameRaw ? (zoneNameRaw.startsWith("Khu") ? zoneNameRaw : `Khu ${zoneNameRaw}`) : "";
-    const icon = "";
-    const entityTitle = isTable
-      ? (tentNameRaw.startsWith("Bàn") ? tentNameRaw : `Bàn ${tentNameRaw}`)
-      : (tentNameRaw.startsWith("Lều") ? tentNameRaw : `Lều ${tentNameRaw}`);
+    const zoneTitle = rawZone ? (rawZone.startsWith("Khu") ? rawZone : `Khu ${rawZone}`) : (isTable ? "Khu Ẩm Thực" : "Khu Cắm Trại");
 
-    if (zoneFormatted) {
-      return { icon, text: `${zoneFormatted} • ${entityTitle}`, isTable };
+    if (isTable) {
+      const tableNumber = rawTentName.replace(/^Bàn\s*/i, '');
+      const tableTitle = `Bàn ${tableNumber || rawTentName}`;
+      return {
+        icon: "🍽️",
+        isTable: true,
+        zoneTitle,
+        primaryTitle: tableTitle,
+        secondaryDetail: null,
+        text: `${zoneTitle} • ${tableTitle}`
+      };
     }
-    return { icon, text: entityTitle, isTable };
+
+    // Camping Slot Logic:
+    const cleanSlot = (slotCode || rawTentName).replace(/^Ô\s*/i, '').replace(/^Lều\s*/i, '');
+    let slotsDisplay = `Ô ${cleanSlot}`;
+
+    let tentSetup = booking?.tentSetupSummary?.trim() || "";
+    if (!tentSetup) {
+      if (tent?.size === 'Small') tentSetup = "Lều Nhỏ (~3m²)";
+      else if (tent?.size === 'Medium') tentSetup = "Lều Trung (~6m²)";
+      else if (tent?.size === 'Large') tentSetup = "Lều Lớn (~12m²)";
+      else if (tent?.tentType && tent.tentType !== 'Standard') tentSetup = `Lều ${tent.tentType}`;
+    }
+
+    return {
+      icon: "⛺",
+      isTable: false,
+      zoneTitle,
+      primaryTitle: slotsDisplay,
+      secondaryDetail: tentSetup || null,
+      text: `${zoneTitle} • ${slotsDisplay}${tentSetup ? ` (${tentSetup})` : ''}`
+    };
   };
 
   const [locationFilter, setLocationFilter] = useState('ALL'); // 'ALL' | 'TABLE' | 'TENT'
@@ -500,7 +529,7 @@ export default function WaiterOrdersPage() {
               {[
                 { key: 'ALL', label: `Tất cả (${orders.length})` },
                 { key: 'TABLE', label: `Bàn ăn (${orders.filter(o => getLocationFormatted(o).isTable).length})` },
-                { key: 'TENT', label: `Lều (${orders.filter(o => !getLocationFormatted(o).isTable).length})` }
+                { key: 'TENT', label: `Ô cắm trại (${orders.filter(o => !getLocationFormatted(o).isTable).length})` }
               ].map(f => (
                 <button
                   key={f.key}
@@ -524,7 +553,7 @@ export default function WaiterOrdersPage() {
                 <div className="bg-emerald-500 w-full py-8 flex flex-col items-center justify-center text-white relative">
                   <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
                   <BellRing size={64} className="animate-wiggle drop-shadow-lg mb-4" />
-                  <h2 className="text-3xl font-black uppercase tracking-widest text-emerald-50">{newOrderAlert.tentName}</h2>
+                  <h2 className="text-2xl font-black uppercase tracking-wider text-emerald-50 px-4 leading-tight">{newOrderAlert.tentName}</h2>
                 </div>
                 
                 <div className="p-6 w-full">
@@ -572,15 +601,24 @@ export default function WaiterOrdersPage() {
                 <div className="flex justify-between items-start mb-3 pl-2">
                   <div className="space-y-1">
                     {/* Location Badge */}
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xl">{loc.icon}</span>
-                      <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                        {loc.text}
-                      </h3>
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xl">{loc.icon}</span>
+                        <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                          {loc.zoneTitle} • {loc.primaryTitle}
+                        </h3>
+                      </div>
+
+                      {loc.secondaryDetail && (
+                        <div className="mt-1 flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-950 font-black text-xs w-max">
+                          <span>⛺</span>
+                          <span>Setup: <strong className="text-[#7C5A38]">{loc.secondaryDetail}</strong></span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Customer Name */}
-                    <div className="flex items-center gap-1.5 text-slate-600 font-bold text-sm pt-0.5">
+                    <div className="flex items-center gap-1.5 text-slate-600 font-bold text-sm pt-1">
                       <User size={15} className="text-emerald-600" />
                       <span>Khách: <strong className="text-slate-800 font-black">{customerName}</strong></span>
                     </div>

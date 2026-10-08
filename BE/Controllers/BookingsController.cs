@@ -45,6 +45,38 @@ namespace BuiHuiCamping.API.Controllers
         public string TentName { get; set; } = string.Empty;
     }
 
+    public class AssignedQrCardDto
+    {
+        public string CardCode { get; set; } = string.Empty;
+        public string? AssignedTo { get; set; } = string.Empty;
+        public string? Note { get; set; } = string.Empty;
+        public bool IsUnlocked { get; set; } = true;
+        public DateTime AssignedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    public class AssignQrCardRequestDto
+    {
+        public string CardCode { get; set; } = string.Empty;
+        public string? AssignedTo { get; set; } = string.Empty;
+        public string? Note { get; set; } = string.Empty;
+        public bool IsUnlocked { get; set; } = true;
+    }
+
+    public class ToggleQrCardRequestDto
+    {
+        public string CardCode { get; set; } = string.Empty;
+        public bool? IsUnlocked { get; set; }
+    }
+
+    public class UpdateTentSetupDto
+    {
+        public string TentSetupDetails { get; set; } = string.Empty;
+        public string TentSetupSummary { get; set; } = string.Empty;
+        public decimal? NewTotalPrice { get; set; }
+        public string? Reason { get; set; }
+        public bool AutoCheckIn { get; set; } = false;
+    }
+
     [Route("api/[controller]")]
     [ApiController]
     public class BookingsController : ControllerBase
@@ -66,6 +98,22 @@ namespace BuiHuiCamping.API.Controllers
                 .AsNoTracking()
                 .ToListAsync();
             return Ok(bookings);
+        }
+
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetBooking(int id)
+        {
+            var booking = await _context.Bookings
+                .Include(b => b.Tents)
+                    .ThenInclude(t => t.Zone)
+                .Include(b => b.Orders)
+                    .ThenInclude(o => o.OrderDetails)
+                        .ThenInclude(od => od.MenuItem)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == id);
+
+            if (booking == null) return NotFound("Không tìm thấy đơn đặt.");
+            return Ok(booking);
         }
 
         [HttpGet("pending-requests")]
@@ -167,10 +215,7 @@ namespace BuiHuiCamping.API.Controllers
                 {
                     var startTime = b.ActualCheckInDate ?? b.CheckInDate ?? b.BookingTime;
                     var endTime = b.ActualCheckOutDate ?? DateTime.Now;
-                    var duration = endTime - startTime;
-
-                    double totalHours = duration.TotalHours;
-                    int roundedHours = Math.Max(1, (int)Math.Ceiling(totalHours));
+                    int roundedHours = CalculateHourlyBilledHours(startTime, endTime);
 
                     foreach (var tent in b.Tents)
                     {
@@ -205,8 +250,12 @@ namespace BuiHuiCamping.API.Controllers
                     phoneNumber = b.PhoneNumber,
                     status = b.Status,
                     bookingTime = b.BookingTime,
+                    bookingType = b.BookingType,
                     checkInDate = b.CheckInDate,
                     checkOutDate = b.CheckOutDate,
+                    actualCheckInDate = b.ActualCheckInDate,
+                    actualCheckOutDate = b.ActualCheckOutDate,
+                    estimatedHours = b.EstimatedHours,
                     isQrUnlocked = b.IsQrUnlocked,
                     tentsCount = tentsList.Count,
                     tents = tentsList,
@@ -232,7 +281,7 @@ namespace BuiHuiCamping.API.Controllers
                 CustomerName = dto.CustomerName,
                 PhoneNumber = dto.PhoneNumber,
                 CheckInDate = dto.CheckInDate ?? DateTime.Now,
-                CheckOutDate = isHourly ? null : dto.CheckOutDate,
+                CheckOutDate = dto.CheckOutDate ?? (isHourly ? (dto.CheckInDate ?? DateTime.Now).AddHours(dto.EstimatedHours > 0 ? dto.EstimatedHours : 1) : (dto.CheckInDate ?? DateTime.Now).AddDays(1)),
                 DepositAmount = dto.DepositAmount,
                 BookingType = isHourly ? "Hourly" : "Overnight",
                 HourlyFirstHourPrice = dto.HourlyFirstHourPrice > 0 ? dto.HourlyFirstHourPrice : 100000,
@@ -526,7 +575,33 @@ namespace BuiHuiCamping.API.Controllers
                 }
             }
 
-            if (booking.BookingType == "Hourly")
+            if (!string.IsNullOrEmpty(booking.TentSetupDetails))
+            {
+                try
+                {
+                    var items = System.Text.Json.JsonSerializer.Deserialize<List<TentSetupItemDto>>(booking.TentSetupDetails, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (items != null && items.Count > 0)
+                    {
+                        if (booking.BookingType == "Hourly")
+                        {
+                            decimal sumFirst = items.Sum(i => (i.HourlyFirstHourPrice > 0 ? i.HourlyFirstHourPrice : 100000) * i.Quantity);
+                            decimal sumExtra = items.Sum(i => (i.HourlyExtraHourPrice > 0 ? i.HourlyExtraHourPrice : 50000) * i.Quantity);
+                            var diffHours = booking.EstimatedHours.GetValueOrDefault(1);
+                            booking.TotalPrice = sumFirst + (diffHours > 1 ? (diffHours - 1) * sumExtra : 0);
+                        }
+                        else
+                        {
+                            decimal sumPerNight = items.Sum(i => (i.Price > 0 ? i.Price : 500000) * i.Quantity);
+                            var start = booking.CheckInDate ?? DateTime.Now;
+                            var end = booking.CheckOutDate ?? start.AddDays(1);
+                            var nights = Math.Max(1, (int)Math.Ceiling((end.Date - start.Date).TotalDays));
+                            booking.TotalPrice = sumPerNight * nights;
+                        }
+                    }
+                }
+                catch {}
+            }
+            else if (booking.BookingType == "Hourly")
             {
                 var start = booking.CheckInDate ?? DateTime.Now;
                 var end = booking.CheckOutDate ?? start.AddHours(booking.EstimatedHours.GetValueOrDefault(1));
@@ -577,6 +652,62 @@ namespace BuiHuiCamping.API.Controllers
             return Ok(booking);
         }
 
+        private static int CalculateHourlyBilledHours(DateTime startTime, DateTime endTime)
+        {
+            var duration = endTime - startTime;
+            double totalMinutes = Math.Max(0, duration.TotalMinutes);
+            if (totalMinutes <= 60)
+            {
+                return 1;
+            }
+            int fullHours = (int)(totalMinutes / 60);
+            double extraMinutes = totalMinutes % 60;
+            if (extraMinutes > 30)
+            {
+                return fullHours + 1;
+            }
+            return Math.Max(1, fullHours);
+        }
+
+        private static (decimal firstHourRate, decimal extraHourRate) GetHourlyRates(Booking booking)
+        {
+            decimal firstHourRate = 0;
+            decimal extraHourRate = 0;
+
+            if (!string.IsNullOrEmpty(booking.TentSetupDetails))
+            {
+                try
+                {
+                    var items = System.Text.Json.JsonSerializer.Deserialize<List<TentSetupItemDto>>(
+                        booking.TentSetupDetails,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
+                    if (items != null && items.Count > 0)
+                    {
+                        firstHourRate = items.Sum(i => (i.HourlyFirstHourPrice > 0 ? i.HourlyFirstHourPrice : 100000) * i.Quantity);
+                        extraHourRate = items.Sum(i => (i.HourlyExtraHourPrice > 0 ? i.HourlyExtraHourPrice : 50000) * i.Quantity);
+                    }
+                }
+                catch {}
+            }
+
+            if (firstHourRate <= 0)
+            {
+                firstHourRate = booking.HourlyFirstHourPrice.GetValueOrDefault(0) > 0
+                    ? booking.HourlyFirstHourPrice.Value
+                    : (booking.Tents.Any() ? booking.Tents.Sum(t => t.HourlyPriceFirstHour.GetValueOrDefault(0) > 0 ? t.HourlyPriceFirstHour.Value : 100000) : 100000);
+            }
+
+            if (extraHourRate <= 0)
+            {
+                extraHourRate = booking.HourlyExtraHourPrice.GetValueOrDefault(0) > 0
+                    ? booking.HourlyExtraHourPrice.Value
+                    : (booking.Tents.Any() ? booking.Tents.Sum(t => t.HourlyPriceExtraHour.GetValueOrDefault(0) > 0 ? t.HourlyPriceExtraHour.Value : 50000) : 50000);
+            }
+
+            return (firstHourRate, extraHourRate);
+        }
+
         [HttpGet("{id}/master-bill")]
         public async Task<IActionResult> GetMasterBill(int id)
         {
@@ -600,13 +731,38 @@ namespace BuiHuiCamping.API.Controllers
             int totalHourlyDuration = 0;
             bool isHourlyBooking = resolvedBookingType.Equals("Hourly", StringComparison.OrdinalIgnoreCase);
 
+            var startTime = booking.ActualCheckInDate ?? booking.CheckInDate ?? booking.BookingTime;
+            var endTime = (booking.Status == "CheckedOut" ? booking.ActualCheckOutDate : null) ?? DateTime.Now;
+
             if (isHourlyBooking)
             {
-                var startTime = booking.ActualCheckInDate ?? booking.CheckInDate ?? booking.BookingTime;
-                var endTime = booking.ActualCheckOutDate ?? booking.CheckOutDate ?? DateTime.Now;
-                var duration = endTime - startTime;
-                double totalHours = Math.Max(0.1, duration.TotalHours);
-                totalHourlyDuration = Math.Max(1, (int)Math.Ceiling(totalHours));
+                if (booking.Status == "Occupied" || booking.Status == "CheckedOut")
+                {
+                    totalHourlyDuration = CalculateHourlyBilledHours(startTime, endTime);
+                }
+                else
+                {
+                    totalHourlyDuration = Math.Max(1, booking.EstimatedHours.GetValueOrDefault(1));
+                }
+
+                var (fPrice, ePrice) = GetHourlyRates(booking);
+                decimal calculatedHourlyPrice = fPrice + (totalHourlyDuration > 1 ? (totalHourlyDuration - 1) * ePrice : 0);
+
+                if (booking.Status == "Occupied" || booking.Status == "CheckedOut")
+                {
+                    tentRentalFee = calculatedHourlyPrice;
+                }
+                else
+                {
+                    tentRentalFee = booking.TotalPrice > 0 ? booking.TotalPrice : calculatedHourlyPrice;
+                }
+            }
+            else
+            {
+                var inDate = booking.CheckInDate ?? DateTime.Now;
+                var outDate = booking.CheckOutDate ?? inDate.AddDays(1);
+                var nights = Math.Max(1, (int)Math.Ceiling((outDate.Date - inDate.Date).TotalDays));
+                tentRentalFee = booking.TotalPrice > 0 ? booking.TotalPrice : booking.Tents.Sum(t => t.Price) * nights;
             }
 
             var tentsList = booking.Tents.Select(t => {
@@ -624,9 +780,7 @@ namespace BuiHuiCamping.API.Controllers
                 decimal calculatedPrice = t.Price;
                 if (isHourlyBooking)
                 {
-                    decimal fPrice = t.HourlyPriceFirstHour.GetValueOrDefault(0) > 0 ? t.HourlyPriceFirstHour.Value : (booking.HourlyFirstHourPrice.GetValueOrDefault(0) > 0 ? booking.HourlyFirstHourPrice.Value : 100000);
-                    decimal ePrice = t.HourlyPriceExtraHour.GetValueOrDefault(0) > 0 ? t.HourlyPriceExtraHour.Value : (booking.HourlyExtraHourPrice.GetValueOrDefault(0) > 0 ? booking.HourlyExtraHourPrice.Value : 50000);
-                    calculatedPrice = fPrice + (totalHourlyDuration > 1 ? (totalHourlyDuration - 1) * ePrice : 0);
+                    calculatedPrice = booking.Tents.Count > 0 ? Math.Round(tentRentalFee / booking.Tents.Count) : tentRentalFee;
                 }
 
                 return new {
@@ -640,8 +794,6 @@ namespace BuiHuiCamping.API.Controllers
 
             string combinedLocationName = string.Join(", ", tentsList.Select(t => t.locationName));
             var firstTent = tentsList.FirstOrDefault();
-
-            tentRentalFee = isHourlyBooking ? tentsList.Sum(t => t.price) : (booking.TotalPrice > 0 ? booking.TotalPrice : tentsList.Sum(t => t.price));
             decimal depositPaid = booking.DepositAmount;
 
             var activeOrders = booking.Orders.Where(o => o.Status != "Cancelled").ToList();
@@ -667,6 +819,9 @@ namespace BuiHuiCamping.API.Controllers
             decimal grandTotal = tentRentalFee + foodAndServicesTotal;
             decimal remainingBalance = Math.Max(0, grandTotal - depositPaid);
 
+            var effectiveCheckOutDate = (booking.Status == "CheckedOut" ? booking.ActualCheckOutDate : null) ?? DateTime.Now;
+            var actualDurationMinutes = Math.Max(0, (int)(endTime - startTime).TotalMinutes);
+
             return Ok(new {
                 bookingId = booking.Id,
                 customerName = booking.CustomerName,
@@ -678,6 +833,8 @@ namespace BuiHuiCamping.API.Controllers
                 checkOutDate = booking.CheckOutDate,
                 actualCheckInDate = booking.ActualCheckInDate,
                 actualCheckOutDate = booking.ActualCheckOutDate,
+                effectiveCheckOutDate = effectiveCheckOutDate,
+                actualDurationMinutes = actualDurationMinutes,
                 tentsCount = tentsList.Count,
                 tents = tentsList,
                 locationName = combinedLocationName,
@@ -767,13 +924,19 @@ namespace BuiHuiCamping.API.Controllers
 
                     decimal foodAndServicesTotal = itemSummaries.Sum(i => i.totalPrice);
 
+                    var nowTime = DateTime.Now;
                     return Ok(new {
                         bookingId = (int?)null,
                         customerName = "Khách Ăn Tại Bàn",
                         phoneNumber = "",
                         status = "Occupied",
-                        checkInDate = DateTime.Now,
+                        checkInDate = nowTime,
                         checkOutDate = (DateTime?)null,
+                        actualCheckInDate = nowTime,
+                        actualCheckOutDate = (DateTime?)null,
+                        effectiveCheckOutDate = nowTime,
+                        actualDurationMinutes = 0,
+                        hourlyDurationHours = 1,
                         tentsCount = 1,
                         tents = new[] { new { id = targetTent.Id, name = targetTent.Name, zoneName = rZone, locationName = locName, price = targetTent.Price } },
                         locationName = locName,
@@ -807,6 +970,51 @@ namespace BuiHuiCamping.API.Controllers
             booking.IsQrUnlocked = false; // Lock QR upon checkout
             booking.ActualCheckOutDate = DateTime.Now;
 
+            string resolvedBookingType = booking.BookingType;
+            if (string.IsNullOrEmpty(resolvedBookingType))
+            {
+                resolvedBookingType = (booking.CheckInDate.HasValue && booking.CheckOutDate.HasValue && booking.CheckInDate.Value.Date == booking.CheckOutDate.Value.Date) ? "Hourly" : "Overnight";
+            }
+
+            if (resolvedBookingType.Equals("Hourly", StringComparison.OrdinalIgnoreCase))
+            {
+                var startTime = booking.ActualCheckInDate ?? booking.CheckInDate ?? booking.BookingTime;
+                var endTime = booking.ActualCheckOutDate.Value;
+                int billedHours = CalculateHourlyBilledHours(startTime, endTime);
+                var (firstHourRate, extraHourRate) = GetHourlyRates(booking);
+                decimal finalPrice = firstHourRate + (billedHours > 1 ? (billedHours - 1) * extraHourRate : 0);
+                booking.EstimatedHours = billedHours;
+                booking.TotalPrice = finalPrice;
+            }
+
+            // Automatically return all assigned physical QR business cards back to warehouse inventory
+            if (!string.IsNullOrWhiteSpace(booking.AssignedQrCards))
+            {
+                try
+                {
+                    var cards = System.Text.Json.JsonSerializer.Deserialize<List<AssignedQrCardDto>>(
+                        booking.AssignedQrCards,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
+                    if (cards != null && cards.Any())
+                    {
+                        var codes = cards.Select(c => c.CardCode.ToUpper()).ToList();
+                        var dbCards = await _context.QrCards.Where(q => codes.Contains(q.CardCode.ToUpper())).ToListAsync();
+                        foreach (var dc in dbCards)
+                        {
+                            dc.Status = "Available";
+                            dc.CurrentBookingId = null;
+                            dc.AssignedPlacement = null;
+                            dc.UpdatedAt = DateTime.UtcNow;
+                        }
+
+                        foreach (var c in cards) c.IsUnlocked = false;
+                        booking.AssignedQrCards = System.Text.Json.JsonSerializer.Serialize(cards);
+                    }
+                }
+                catch {}
+            }
+
             foreach (var tent in booking.Tents)
             {
                 tent.Status = "Available";
@@ -834,6 +1042,7 @@ namespace BuiHuiCamping.API.Controllers
             await _hubContext.Clients.All.SendAsync("TentTypesUpdated");
             await _hubContext.Clients.All.SendAsync("BookingQrStatusChanged");
             await _hubContext.Clients.All.SendAsync("OrderUpdated");
+            await _hubContext.Clients.All.SendAsync("QrCardsUpdated");
             return Ok(booking);
         }
 
@@ -875,6 +1084,104 @@ namespace BuiHuiCamping.API.Controllers
             return Ok(booking);
         }
 
+        [HttpPut("{id}/update-tent-setup")]
+        public async Task<IActionResult> UpdateTentSetup(int id, [FromBody] UpdateTentSetupDto dto)
+        {
+            var booking = await _context.Bookings
+                .Include(b => b.Tents)
+                .Include(b => b.Orders)
+                .FirstOrDefaultAsync(b => b.Id == id);
+
+            if (booking == null) return NotFound(new { message = "Không tìm thấy đơn đặt!" });
+
+            if (booking.Status == "CheckedOut" || booking.Status == "Cancelled" || booking.Status == "Occupied")
+            {
+                return BadRequest(new { message = "Không thể thay đổi quy cách lều khi khách đang ở (Occupied), đã trả phòng hoặc đã hủy!" });
+            }
+
+            booking.TentSetupDetails = dto?.TentSetupDetails ?? string.Empty;
+            booking.TentSetupSummary = dto?.TentSetupSummary ?? string.Empty;
+
+            // Recalculate price
+            if (dto?.NewTotalPrice.HasValue == true && dto.NewTotalPrice.Value > 0)
+            {
+                booking.TotalPrice = dto.NewTotalPrice.Value;
+            }
+            else if (!string.IsNullOrEmpty(dto?.TentSetupDetails))
+            {
+                try
+                {
+                    var items = System.Text.Json.JsonSerializer.Deserialize<List<TentSetupItemDto>>(dto.TentSetupDetails, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (items != null && items.Count > 0)
+                    {
+                        if (booking.BookingType == "Hourly")
+                        {
+                            decimal sumFirst = items.Sum(i => (i.HourlyFirstHourPrice > 0 ? i.HourlyFirstHourPrice : 100000) * i.Quantity);
+                            decimal sumExtra = items.Sum(i => (i.HourlyExtraHourPrice > 0 ? i.HourlyExtraHourPrice : 50000) * i.Quantity);
+                            booking.HourlyFirstHourPrice = sumFirst;
+                            booking.HourlyExtraHourPrice = sumExtra;
+                            var diffHours = booking.EstimatedHours.GetValueOrDefault(1);
+                            booking.TotalPrice = sumFirst + (diffHours > 1 ? (diffHours - 1) * sumExtra : 0);
+                        }
+                        else
+                        {
+                            decimal sumPerNight = items.Sum(i => (i.Price > 0 ? i.Price : 500000) * i.Quantity);
+                            var start = booking.CheckInDate ?? DateTime.Now;
+                            var end = booking.CheckOutDate ?? start.AddDays(1);
+                            var nights = Math.Max(1, (int)Math.Ceiling((end.Date - start.Date).TotalDays));
+                            booking.TotalPrice = sumPerNight * nights;
+                        }
+                    }
+                }
+                catch {}
+            }
+
+            // Append audit log to Note
+            var timestamp = DateTime.Now.ToString("dd/MM HH:mm");
+            var noteMsg = $"[{timestamp} Lễ tân đổi lều: {booking.TentSetupSummary}]";
+            if (!string.IsNullOrWhiteSpace(dto?.Reason))
+            {
+                noteMsg += $" (Lý do: {dto.Reason.Trim()})";
+            }
+            booking.Note = string.IsNullOrWhiteSpace(booking.Note) ? noteMsg : $"{booking.Note}\n{noteMsg}";
+
+            // Optional auto checkin
+            if (dto?.AutoCheckIn == true && booking.Status == "Booked")
+            {
+                booking.Status = "Occupied";
+                if (!booking.ActualCheckInDate.HasValue)
+                {
+                    booking.ActualCheckInDate = DateTime.Now;
+                }
+
+                foreach (var tent in booking.Tents)
+                {
+                    var existingOrder = booking.Orders.FirstOrDefault(o => o.TentId == tent.Id && o.Status == "Unpaid");
+                    if (existingOrder == null)
+                    {
+                        var order = new Order
+                        {
+                            TentId = tent.Id,
+                            BookingId = booking.Id,
+                            Status = "Unpaid",
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _context.Orders.Add(order);
+                    }
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            await _hubContext.Clients.All.SendAsync("TentTypesUpdated");
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            await _hubContext.Clients.All.SendAsync("OrderUpdated");
+
+            return Ok(new {
+                message = "Cập nhật quy cách lều thành công!",
+                booking = booking
+            });
+        }
+
         [HttpPost("{id}/toggle-qr-lock")]
         public async Task<IActionResult> ToggleQrLock(int id)
         {
@@ -898,6 +1205,330 @@ namespace BuiHuiCamping.API.Controllers
             await _hubContext.Clients.All.SendAsync("TentStatusChanged");
 
             return Ok(new { bookingId = booking.Id, isQrUnlocked = booking.IsQrUnlocked, message = booking.IsQrUnlocked ? "Mã QR đã được MỞ KHÓA thủ công!" : "Mã QR đã bị KHÓA thủ công!" });
+        }
+
+        [HttpGet("active-qr-cards")]
+        public async Task<IActionResult> GetActiveQrCards()
+        {
+            var activeBookings = await _context.Bookings
+                .Include(b => b.Tents)
+                .Where(b => b.Status == "Booked" || b.Status == "Occupied")
+                .AsNoTracking()
+                .ToListAsync();
+
+            var list = new List<object>();
+            foreach (var b in activeBookings)
+            {
+                if (string.IsNullOrWhiteSpace(b.AssignedQrCards)) continue;
+                try
+                {
+                    var cards = System.Text.Json.JsonSerializer.Deserialize<List<AssignedQrCardDto>>(
+                        b.AssignedQrCards, 
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
+                    if (cards != null)
+                    {
+                        foreach (var c in cards)
+                        {
+                            list.Add(new {
+                                cardCode = c.CardCode,
+                                bookingId = b.Id,
+                                customerName = b.CustomerName,
+                                assignedTo = c.AssignedTo,
+                                note = c.Note,
+                                isUnlocked = c.IsUnlocked,
+                                assignedAt = c.AssignedAt
+                            });
+                        }
+                    }
+                }
+                catch {}
+            }
+            return Ok(list);
+        }
+
+        [HttpPost("{id}/assign-qr-card")]
+        public async Task<IActionResult> AssignQrCard(int id, [FromBody] AssignQrCardRequestDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.CardCode))
+                return BadRequest("Mã thẻ QR không được để trống.");
+
+            var cleanCardCode = dto.CardCode.Trim().ToUpper();
+
+            var booking = await _context.Bookings
+                .Include(b => b.Tents)
+                .FirstOrDefaultAsync(b => b.Id == id);
+
+            if (booking == null) return NotFound("Không tìm thấy đơn đặt.");
+
+            // Check if card is currently assigned to another active booking
+            var otherActive = await _context.Bookings
+                .Where(b => b.Id != id && (b.Status == "Booked" || b.Status == "Occupied") && !string.IsNullOrEmpty(b.AssignedQrCards))
+                .ToListAsync();
+
+            foreach (var ob in otherActive)
+            {
+                try
+                {
+                    var obCards = System.Text.Json.JsonSerializer.Deserialize<List<AssignedQrCardDto>>(
+                        ob.AssignedQrCards!,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
+                    if (obCards != null && obCards.Any(c => c.CardCode.Equals(cleanCardCode, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return BadRequest($"Thẻ '{cleanCardCode}' hiện đang được gán cho đơn của khách {ob.CustomerName} (Booking #{ob.Id}). Vui lòng thu hồi thẻ trước.");
+                    }
+                }
+                catch {}
+            }
+
+            // Parse existing cards of this booking
+            var cards = new List<AssignedQrCardDto>();
+            if (!string.IsNullOrWhiteSpace(booking.AssignedQrCards))
+            {
+                try
+                {
+                    cards = System.Text.Json.JsonSerializer.Deserialize<List<AssignedQrCardDto>>(
+                        booking.AssignedQrCards,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    ) ?? new List<AssignedQrCardDto>();
+                }
+                catch
+                {
+                    cards = new List<AssignedQrCardDto>();
+                }
+            }
+
+            var existing = cards.FirstOrDefault(c => c.CardCode.Equals(cleanCardCode, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                existing.AssignedTo = dto.AssignedTo ?? existing.AssignedTo;
+                existing.Note = dto.Note ?? existing.Note;
+                existing.IsUnlocked = dto.IsUnlocked;
+            }
+            else
+            {
+                cards.Add(new AssignedQrCardDto
+                {
+                    CardCode = cleanCardCode,
+                    AssignedTo = dto.AssignedTo ?? string.Empty,
+                    Note = dto.Note ?? string.Empty,
+                    IsUnlocked = dto.IsUnlocked,
+                    AssignedAt = DateTime.UtcNow
+                });
+            }
+
+            booking.AssignedQrCards = System.Text.Json.JsonSerializer.Serialize(cards);
+
+            // Sync booking overall IsQrUnlocked
+            booking.IsQrUnlocked = cards.Any(c => c.IsUnlocked);
+            foreach (var tent in booking.Tents)
+            {
+                tent.IsQrUnlocked = booking.IsQrUnlocked;
+            }
+
+            // Sync with QrCards inventory table
+            var qrCard = await _context.QrCards.FirstOrDefaultAsync(q => q.CardCode.ToUpper() == cleanCardCode);
+            if (qrCard != null)
+            {
+                qrCard.Status = "Assigned";
+                qrCard.CurrentBookingId = booking.Id;
+                qrCard.AssignedPlacement = dto.AssignedTo;
+                qrCard.UpdatedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                _context.QrCards.Add(new QrCard
+                {
+                    CardCode = cleanCardCode,
+                    Status = "Assigned",
+                    CurrentBookingId = booking.Id,
+                    AssignedPlacement = dto.AssignedTo,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            await _hubContext.Clients.All.SendAsync("BookingQrStatusChanged", new { bookingId = booking.Id, isQrUnlocked = booking.IsQrUnlocked });
+            await _hubContext.Clients.All.SendAsync("QrCardsUpdated");
+
+            return Ok(new {
+                message = $"Đã gán thẻ QR '{cleanCardCode}' thành công!",
+                cards = cards,
+                bookingId = booking.Id,
+                isQrUnlocked = booking.IsQrUnlocked
+            });
+        }
+
+        [HttpPost("{id}/toggle-qr-card")]
+        public async Task<IActionResult> ToggleQrCard(int id, [FromBody] ToggleQrCardRequestDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.CardCode))
+                return BadRequest("Mã thẻ QR không được để trống.");
+
+            var cleanCardCode = dto.CardCode.Trim().ToUpper();
+
+            var booking = await _context.Bookings
+                .Include(b => b.Tents)
+                .FirstOrDefaultAsync(b => b.Id == id);
+
+            if (booking == null) return NotFound("Không tìm thấy đơn đặt.");
+
+            var cards = new List<AssignedQrCardDto>();
+            if (!string.IsNullOrWhiteSpace(booking.AssignedQrCards))
+            {
+                try
+                {
+                    cards = System.Text.Json.JsonSerializer.Deserialize<List<AssignedQrCardDto>>(
+                        booking.AssignedQrCards,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    ) ?? new List<AssignedQrCardDto>();
+                }
+                catch {}
+            }
+
+            var card = cards.FirstOrDefault(c => c.CardCode.Equals(cleanCardCode, StringComparison.OrdinalIgnoreCase));
+            if (card == null)
+            {
+                return NotFound($"Không tìm thấy thẻ '{cleanCardCode}' trong đơn này.");
+            }
+
+            card.IsUnlocked = dto.IsUnlocked.HasValue ? dto.IsUnlocked.Value : !card.IsUnlocked;
+            booking.AssignedQrCards = System.Text.Json.JsonSerializer.Serialize(cards);
+
+            // Booking level IsQrUnlocked is true if at least one card is unlocked
+            booking.IsQrUnlocked = cards.Any(c => c.IsUnlocked);
+            foreach (var tent in booking.Tents)
+            {
+                tent.IsQrUnlocked = booking.IsQrUnlocked;
+            }
+
+            await _context.SaveChangesAsync();
+
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            await _hubContext.Clients.All.SendAsync("BookingQrStatusChanged", new { bookingId = booking.Id, isQrUnlocked = booking.IsQrUnlocked });
+
+            return Ok(new {
+                message = card.IsUnlocked ? $"Thẻ QR '{cleanCardCode}' đã được MỞ KHÓA!" : $"Thẻ QR '{cleanCardCode}' đã bị KHÓA!",
+                card = card,
+                cards = cards,
+                bookingId = booking.Id,
+                isQrUnlocked = booking.IsQrUnlocked
+            });
+        }
+
+        [HttpDelete("{id}/remove-qr-card/{cardCode}")]
+        public async Task<IActionResult> RemoveQrCard(int id, string cardCode)
+        {
+            if (string.IsNullOrWhiteSpace(cardCode))
+                return BadRequest("Mã thẻ QR không được để trống.");
+
+            var cleanCardCode = cardCode.Trim().ToUpper();
+
+            var booking = await _context.Bookings
+                .Include(b => b.Tents)
+                .FirstOrDefaultAsync(b => b.Id == id);
+
+            if (booking == null) return NotFound("Không tìm thấy đơn đặt.");
+
+            var cards = new List<AssignedQrCardDto>();
+            if (!string.IsNullOrWhiteSpace(booking.AssignedQrCards))
+            {
+                try
+                {
+                    cards = System.Text.Json.JsonSerializer.Deserialize<List<AssignedQrCardDto>>(
+                        booking.AssignedQrCards,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    ) ?? new List<AssignedQrCardDto>();
+                }
+                catch {}
+            }
+
+            var removed = cards.RemoveAll(c => c.CardCode.Equals(cleanCardCode, StringComparison.OrdinalIgnoreCase));
+            if (removed == 0)
+            {
+                return NotFound($"Không tìm thấy thẻ '{cleanCardCode}' trong đơn đặt này.");
+            }
+
+            booking.AssignedQrCards = System.Text.Json.JsonSerializer.Serialize(cards);
+            booking.IsQrUnlocked = cards.Any(c => c.IsUnlocked);
+            foreach (var tent in booking.Tents)
+            {
+                tent.IsQrUnlocked = booking.IsQrUnlocked;
+            }
+
+            // Sync with QrCards inventory table
+            var qrCard = await _context.QrCards.FirstOrDefaultAsync(q => q.CardCode.ToUpper() == cleanCardCode);
+            if (qrCard != null)
+            {
+                qrCard.Status = "Available";
+                qrCard.CurrentBookingId = null;
+                qrCard.AssignedPlacement = null;
+                qrCard.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+
+            await _hubContext.Clients.All.SendAsync("TentStatusChanged");
+            await _hubContext.Clients.All.SendAsync("BookingQrStatusChanged", new { bookingId = booking.Id, isQrUnlocked = booking.IsQrUnlocked });
+            await _hubContext.Clients.All.SendAsync("QrCardsUpdated");
+
+            return Ok(new {
+                message = $"Đã gỡ và thu hồi thẻ '{cleanCardCode}' thành công!",
+                cards = cards,
+                bookingId = booking.Id,
+                isQrUnlocked = booking.IsQrUnlocked
+            });
+        }
+
+        [HttpGet("validate-qr-card")]
+        public async Task<IActionResult> ValidateQrCard([FromQuery] string card)
+        {
+            if (string.IsNullOrWhiteSpace(card))
+                return BadRequest(new { active = false, message = "Thiếu mã thẻ QR." });
+
+            var cleanCard = card.Trim().ToUpper();
+
+            var activeBookings = await _context.Bookings
+                .Include(b => b.Tents)
+                    .ThenInclude(t => t.Zone)
+                .Where(b => (b.Status == "Booked" || b.Status == "Occupied") && !string.IsNullOrEmpty(b.AssignedQrCards))
+                .ToListAsync();
+
+            foreach (var b in activeBookings)
+            {
+                try
+                {
+                    var cards = System.Text.Json.JsonSerializer.Deserialize<List<AssignedQrCardDto>>(
+                        b.AssignedQrCards!,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
+                    var matched = cards?.FirstOrDefault(c => c.CardCode.Equals(cleanCard, StringComparison.OrdinalIgnoreCase));
+                    if (matched != null)
+                    {
+                        var primaryTent = b.Tents.FirstOrDefault();
+                        return Ok(new {
+                            valid = true,
+                            active = matched.IsUnlocked,
+                            isUnlocked = matched.IsUnlocked,
+                            bookingId = b.Id,
+                            customerName = b.CustomerName,
+                            cardCode = matched.CardCode,
+                            assignedTo = matched.AssignedTo,
+                            note = matched.Note,
+                            tentName = primaryTent?.Name ?? cleanCard,
+                            tentSetupSummary = b.TentSetupSummary,
+                            tentSetupDetails = b.TentSetupDetails,
+                            landSlots = b.Tents.Select(t => new { id = t.Id, name = t.Name, zoneName = t.Zone?.Name })
+                        });
+                    }
+                }
+                catch {}
+            }
+
+            return NotFound(new { valid = false, active = false, message = $"Thẻ QR '{cleanCard}' chưa được gán cho đơn đặt nào hoặc đã được thu hồi." });
         }
 
         [HttpGet("reset-tent-statuses")]

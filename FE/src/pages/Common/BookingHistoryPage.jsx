@@ -305,7 +305,19 @@ export default function BookingHistoryPage({ userRole = 'receptionist' }) {
 
                   {item.checkInDate && (
                     <p className="font-semibold text-slate-600 flex items-center gap-1.5">
-                      <Calendar size={14} className="text-[#1B4D3E]" /> Check-in: {new Date(item.checkInDate).toLocaleDateString('vi-VN')}
+                      <Calendar size={14} className="text-[#1B4D3E]" /> Lịch: {new Date(item.checkInDate).toLocaleDateString('vi-VN')} {item.checkOutDate ? `- ${new Date(item.checkOutDate).toLocaleDateString('vi-VN')}` : ''}
+                    </p>
+                  )}
+
+                  {item.actualCheckInDate && (
+                    <p className="text-[11px] font-bold text-emerald-800 flex items-center gap-1.5">
+                      <Clock size={13} className="text-emerald-600" /> Nhận thực tế: {new Date(item.actualCheckInDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })} - {new Date(item.actualCheckInDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                    </p>
+                  )}
+
+                  {item.actualCheckOutDate && (
+                    <p className="text-[11px] font-bold text-rose-800 flex items-center gap-1.5">
+                      <Clock size={13} className="text-rose-600" /> Trả thực tế: {new Date(item.actualCheckOutDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })} - {new Date(item.actualCheckOutDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
                     </p>
                   )}
                 </div>

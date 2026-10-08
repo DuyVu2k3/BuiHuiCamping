@@ -55,8 +55,10 @@ namespace BuiHuiCamping.API.Controllers
                 .Include(od => od.Order!)
                     .ThenInclude(o => o.Tent!)
                         .ThenInclude(t => t.Bookings)
+                            .ThenInclude(b => b.Tents)
                 .Include(od => od.Order!)
                     .ThenInclude(o => o.Booking)
+                        .ThenInclude(b => b.Tents)
                 .Where(od => od.Order != null && od.Order.Status == "Unpaid" && od.Status != "Delivered" && od.Status != "Cancelled")
                 .ToListAsync();
 
@@ -83,13 +85,26 @@ namespace BuiHuiCamping.API.Controllers
                         tent = new {
                             id = tentObj?.Id,
                             name = tentObj?.Name,
+                            slotCode = tentObj?.SlotCode,
+                            size = tentObj?.Size,
+                            tentType = tentObj?.TentType,
                             zoneId = tentObj?.ZoneId,
                             zoneName = tentObj?.Zone?.Name ?? "",
+                            zoneType = tentObj?.Zone?.ZoneType ?? "Camping",
                             status = tentObj?.Status
                         },
                         booking = new {
                             id = activeBookingObj?.Id ?? bookingObj?.Id,
-                            customerName = resolveCustomerName
+                            customerName = resolveCustomerName,
+                            phoneNumber = activeBookingObj?.PhoneNumber ?? bookingObj?.PhoneNumber ?? "",
+                            bookingType = activeBookingObj?.BookingType ?? bookingObj?.BookingType ?? "",
+                            tentSetupSummary = activeBookingObj?.TentSetupSummary ?? bookingObj?.TentSetupSummary ?? "",
+                            tentSetupDetails = activeBookingObj?.TentSetupDetails ?? bookingObj?.TentSetupDetails ?? "",
+                            bookingTents = (activeBookingObj?.Tents ?? bookingObj?.Tents)?.Select(bt => new {
+                                id = bt.Id,
+                                name = bt.Name,
+                                slotCode = bt.SlotCode
+                            }).ToList()
                         },
                         orderDetails = g.Select(od => new {
                             id = od.Id,
@@ -173,6 +188,7 @@ namespace BuiHuiCamping.API.Controllers
             var allTents = await _context.Tents
                 .Include(t => t.Zone)
                 .Include(t => t.Bookings)
+                    .ThenInclude(b => b.Tents)
                 .ToListAsync();
 
             Tent? tent = null;
@@ -183,6 +199,30 @@ namespace BuiHuiCamping.API.Controllers
             if (tent == null)
             {
                 tent = FindMatchingTent(allTents, dto.TentName);
+            }
+
+            // Fallback: Check if TentName corresponds to a physical assigned QR card
+            if (tent == null && !string.IsNullOrWhiteSpace(dto.TentName))
+            {
+                var targetCardCode = dto.TentName.Trim();
+                var activeBookingWithCard = await _context.Bookings
+                    .Include(b => b.Tents)
+                    .Where(b => (b.Status == "Booked" || b.Status == "Occupied") && !string.IsNullOrEmpty(b.AssignedQrCards))
+                    .ToListAsync();
+
+                foreach (var ab in activeBookingWithCard)
+                {
+                    try
+                    {
+                        var cards = System.Text.Json.JsonSerializer.Deserialize<List<AssignedQrCardDto>>(ab.AssignedQrCards!, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        if (cards != null && cards.Any(c => c.CardCode.Equals(targetCardCode, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            tent = ab.Tents.FirstOrDefault();
+                            break;
+                        }
+                    }
+                    catch {}
+                }
             }
 
             if (tent == null) return NotFound("Không tìm thấy Lều này trong hệ thống.");
@@ -203,7 +243,7 @@ namespace BuiHuiCamping.API.Controllers
                 bool isTableEntity = (tent.TentType != null && (tent.TentType.Equals("Bàn", StringComparison.OrdinalIgnoreCase) || tent.TentType.Equals("Tiệc", StringComparison.OrdinalIgnoreCase))) ||
                                      (tent.Zone != null && (tent.Zone.Name.Contains("Bàn", StringComparison.OrdinalIgnoreCase) || tent.Zone.Name.Contains("Nhà hàng", StringComparison.OrdinalIgnoreCase)));
 
-                string defaultName = isTableEntity ? $"Khách Bàn {tent.Name}" : $"Khách Lều {tent.Name}";
+                string defaultName = isTableEntity ? $"Khách Bàn {tent.Name}" : $"Khách Ô {tent.SlotCode ?? tent.Name}";
 
                 activeBooking = new Booking
                 {
@@ -275,13 +315,26 @@ namespace BuiHuiCamping.API.Controllers
                 return $"{d.Quantity}x {(menuItem?.Name ?? "Món")}";
             }).ToList();
 
+            bool isTable = (tent.Zone?.ZoneType == "DiningTable") ||
+                           (tent.TentType != null && (tent.TentType.Equals("Bàn", StringComparison.OrdinalIgnoreCase) || tent.TentType.Equals("Tiệc", StringComparison.OrdinalIgnoreCase))) ||
+                           (tent.Zone != null && (tent.Zone.Name.Contains("Bàn", StringComparison.OrdinalIgnoreCase) || tent.Zone.Name.Contains("Nhà hàng", StringComparison.OrdinalIgnoreCase)));
+
+            string defaultCustomer = isTable 
+                ? $"Khách Bàn {tent.Name}" 
+                : $"Khách Ô {tent.SlotCode ?? tent.Name}";
+
             var orderPayload = new {
                 batchId = batchId,
                 orderId = masterOrder.Id,
                 tentName = tent.Name,
+                slotCode = tent.SlotCode,
+                size = tent.Size,
                 zoneName = tent.Zone?.Name ?? "Khu Cắm Trại",
-                customerName = activeBooking?.CustomerName ?? $"Khách Lều {tent.Name}",
+                zoneType = tent.Zone?.ZoneType ?? (isTable ? "DiningTable" : "Camping"),
+                customerName = activeBooking?.CustomerName ?? defaultCustomer,
                 phoneNumber = activeBooking?.PhoneNumber ?? "",
+                tentSetupSummary = activeBooking?.TentSetupSummary ?? "",
+                bookingTents = activeBooking?.Tents?.Select(bt => new { id = bt.Id, name = bt.Name, slotCode = bt.SlotCode }).ToList(),
                 itemsSummary = string.Join(", ", itemNames),
                 totalAmount = addedTotal,
                 createdAt = DateTime.Now
@@ -323,9 +376,15 @@ namespace BuiHuiCamping.API.Controllers
 
             var details = await _context.OrderDetails
                 .Include(od => od.Order!)
-                    .ThenInclude(o => o.Tent)
+                    .ThenInclude(o => o.Tent!)
+                        .ThenInclude(t => t.Zone)
                 .Include(od => od.Order!)
-                    .ThenInclude(o => o.Booking)
+                    .ThenInclude(o => o.Tent!)
+                        .ThenInclude(t => t.Bookings)
+                            .ThenInclude(b => b.Tents)
+                .Include(od => od.Order!)
+                    .ThenInclude(o => o.Booking!)
+                        .ThenInclude(b => b.Tents)
                 .Where(od => od.BatchId == batchId || od.Id.ToString() == batchId)
                 .ToListAsync();
 
@@ -339,10 +398,24 @@ namespace BuiHuiCamping.API.Controllers
             await _context.SaveChangesAsync();
 
             var first = details.First();
-            var tentName = first.Order?.Tent?.Name ?? "";
-            var zoneId = first.Order?.Tent?.ZoneId;
-            var zoneName = first.Order?.Tent?.Zone?.Name ?? "";
-            var customerName = first.Order?.Booking?.CustomerName ?? "";
+            var tentObj = first.Order?.Tent;
+            var bookingObj = first.Order?.Booking;
+            var activeBookingObj = bookingObj ?? tentObj?.Bookings?.FirstOrDefault(b => b.Status == "Occupied" || b.Status == "Booked" || b.Status == "Pending");
+
+            var tentName = tentObj?.Name ?? "";
+            var slotCode = tentObj?.SlotCode ?? tentName;
+            var zoneId = tentObj?.ZoneId;
+            var zoneName = tentObj?.Zone?.Name ?? "";
+            var customerName = activeBookingObj?.CustomerName ?? bookingObj?.CustomerName ?? "Khách hàng";
+            var tentSetup = activeBookingObj?.TentSetupSummary ?? bookingObj?.TentSetupSummary ?? "";
+
+            bool isTable = (tentObj?.Zone?.ZoneType == "DiningTable") ||
+                           (!string.IsNullOrEmpty(zoneName) && (zoneName.Contains("Bàn") || zoneName.Contains("Ẩm thực") || zoneName.Contains("ẩm thực"))) ||
+                           tentName.StartsWith("Bàn");
+
+            // Format location: e.g. "Bàn 03" or "Ô 03 - 2 Lều Nhỏ (1-2 khách)"
+            string slotDisplay = isTable ? (tentName.StartsWith("Bàn") ? tentName : $"Bàn {tentName}") : $"Ô {slotCode}";
+            string locationDisplay = isTable ? slotDisplay : (!string.IsNullOrEmpty(tentSetup) ? $"{slotDisplay} ({tentSetup})" : slotDisplay);
 
             if (status == "Preparing")
             {
@@ -352,11 +425,13 @@ namespace BuiHuiCamping.API.Controllers
             {
                 await _hubContext.Clients.All.SendAsync("OrderToWaiter", new {
                     OrderId = batchId,
-                    TentName = tentName,
+                    TentName = locationDisplay,
+                    SlotCode = slotCode,
+                    TentSetupSummary = tentSetup,
                     CustomerName = customerName,
                     ZoneId = zoneId,
                     ZoneName = zoneName,
-                    Message = $"Có món tại lều {tentName} ({zoneName}) cần giao!"
+                    Message = $"Có món tại {locationDisplay} ({zoneName}) cần giao!"
                 });
                 await _hubContext.Clients.All.SendAsync("OrderStatusUpdated", batchId, status);
             }
@@ -499,7 +574,12 @@ namespace BuiHuiCamping.API.Controllers
                     .ThenInclude(o => o.Tent!)
                         .ThenInclude(t => t.Zone)
                 .Include(od => od.Order!)
+                    .ThenInclude(o => o.Tent!)
+                        .ThenInclude(t => t.Bookings)
+                            .ThenInclude(b => b.Tents)
+                .Include(od => od.Order!)
                     .ThenInclude(o => o.Booking)
+                        .ThenInclude(b => b.Tents)
                 .Where(od => od.Order != null)
                 .OrderByDescending(od => od.CreatedAt)
                 .ToListAsync();
@@ -510,16 +590,25 @@ namespace BuiHuiCamping.API.Controllers
                     var first = g.First();
                     var tentObj = first.Order?.Tent;
                     var bookingObj = first.Order?.Booking;
+                    var activeBookingObj = bookingObj ?? tentObj?.Bookings?.FirstOrDefault(b => b.Status == "Occupied" || b.Status == "Booked" || b.Status == "Pending");
 
                     string rZone = tentObj?.Zone?.Name ?? "";
                     string rTent = tentObj?.Name ?? "";
+                    string rSlot = tentObj?.SlotCode ?? rTent;
                     bool isDiningTable = (tentObj?.Zone?.ZoneType == "DiningTable") || 
                                           (!string.IsNullOrEmpty(rZone) && (rZone.Contains("Bàn") || rZone.Contains("ẩm thực") || rZone.Contains("Ẩm thực"))) ||
                                           rTent.StartsWith("Bàn");
 
-                    string tFormatted = rTent.StartsWith("Lều") || rTent.StartsWith("Bàn") 
-                        ? rTent 
-                        : (isDiningTable ? $"Bàn {rTent}" : $"Lều {rTent}");
+                    string tFormatted = isDiningTable 
+                        ? (rTent.StartsWith("Bàn") ? rTent : $"Bàn {rTent}") 
+                        : $"Ô {rSlot}";
+
+                    var tentSetup = activeBookingObj?.TentSetupSummary ?? bookingObj?.TentSetupSummary ?? "";
+                    if (!isDiningTable && !string.IsNullOrEmpty(tentSetup))
+                    {
+                        tFormatted += $" ({tentSetup})";
+                    }
+
                     string zFormatted = (!string.IsNullOrEmpty(rZone) && !rZone.StartsWith("Khu")) ? $"Khu {rZone}" : rZone;
                     string locName = !string.IsNullOrEmpty(zFormatted) ? $"{zFormatted} - {tFormatted}" : tFormatted;
 
@@ -533,7 +622,9 @@ namespace BuiHuiCamping.API.Controllers
                         proofImage = g.FirstOrDefault(od => !string.IsNullOrEmpty(od.ProofImage))?.ProofImage,
                         createdAt = g.Min(od => od.CreatedAt),
                         locationName = locName,
-                        customerName = bookingObj?.CustomerName ?? "Khách hàng",
+                        slotCode = rSlot,
+                        tentSetupSummary = tentSetup,
+                        customerName = activeBookingObj?.CustomerName ?? bookingObj?.CustomerName ?? "Khách hàng",
                         totalBatchAmount = g.Sum(od => od.Quantity * od.UnitPrice),
                         items = g.Select(od => new {
                             id = od.Id,

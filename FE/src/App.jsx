@@ -12,6 +12,7 @@ import ManagerLayout from './pages/Manager/ManagerLayout';
 import MenuManagementPage from './pages/Manager/MenuManagementPage';
 import FacilityManagementPage from './pages/Manager/FacilityManagementPage';
 import ManagerDashboardPage from './pages/Manager/ManagerDashboardPage';
+import QrCardInventoryPage from './pages/Manager/QrCardInventoryPage';
 
 import ReceptionistLayout from './pages/Staff/ReceptionistLayout';
 import ReceptionistBookingPage from './pages/Staff/ReceptionistBookingPage';
@@ -82,6 +83,7 @@ function App() {
               <Route path="dashboard" element={<ManagerDashboardPage />} />
               <Route path="menu" element={<MenuManagementPage />} />
               <Route path="facilities" element={<FacilityManagementPage />} />
+              <Route path="qr-cards" element={<QrCardInventoryPage />} />
               <Route path="history" element={<BookingHistoryPage userRole="manager" />} />
             </Route>
           </Route>

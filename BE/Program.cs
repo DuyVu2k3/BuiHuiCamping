@@ -123,14 +123,24 @@ using (var scope = app.Services.CreateScope())
             ALTER TABLE [Bookings] ADD [EstimatedHours] INT NOT NULL DEFAULT 1;
         END
 
-        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'HourlyPriceFirstHour')
+        IF OBJECT_ID('LandSlots') IS NOT NULL
         BEGIN
-            ALTER TABLE [Tents] ADD [HourlyPriceFirstHour] DECIMAL(18,2) NOT NULL DEFAULT 100000;
-        END
-
-        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'HourlyPriceExtraHour')
-        BEGIN
-            ALTER TABLE [Tents] ADD [HourlyPriceExtraHour] DECIMAL(18,2) NOT NULL DEFAULT 50000;
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('LandSlots') AND name = 'HourlyPriceFirstHour')
+                ALTER TABLE [LandSlots] ADD [HourlyPriceFirstHour] DECIMAL(18,2) NOT NULL DEFAULT 100000;
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('LandSlots') AND name = 'HourlyPriceExtraHour')
+                ALTER TABLE [LandSlots] ADD [HourlyPriceExtraHour] DECIMAL(18,2) NOT NULL DEFAULT 50000;
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('LandSlots') AND name = 'MergedParentTentId')
+                ALTER TABLE [LandSlots] ADD [MergedParentTentId] INT NULL;
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('LandSlots') AND name = 'Size')
+                ALTER TABLE [LandSlots] ADD [Size] NVARCHAR(50) NOT NULL DEFAULT 'Small';
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('LandSlots') AND name = 'SlotsOccupied')
+                ALTER TABLE [LandSlots] ADD [SlotsOccupied] INT NOT NULL DEFAULT 1;
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('LandSlots') AND name = 'SlotCode')
+                ALTER TABLE [LandSlots] ADD [SlotCode] NVARCHAR(50) NULL;
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('LandSlots') AND name = 'GridX')
+                ALTER TABLE [LandSlots] ADD [GridX] INT NOT NULL DEFAULT 0;
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('LandSlots') AND name = 'GridY')
+                ALTER TABLE [LandSlots] ADD [GridY] INT NOT NULL DEFAULT 0;
         END
 
         UPDATE [Bookings] SET [BookingType] = 'Overnight' WHERE [BookingType] IS NULL;
@@ -138,9 +148,6 @@ using (var scope = app.Services.CreateScope())
         UPDATE [Bookings] SET [HourlyExtraHourPrice] = 50000 WHERE [HourlyExtraHourPrice] IS NULL;
         UPDATE [Bookings] SET [EstimatedHours] = 1 WHERE [EstimatedHours] IS NULL;
         UPDATE [Bookings] SET [Note] = '' WHERE [Note] IS NULL;
-
-        UPDATE [Tents] SET [HourlyPriceFirstHour] = 100000 WHERE [HourlyPriceFirstHour] IS NULL;
-        UPDATE [Tents] SET [HourlyPriceExtraHour] = 50000 WHERE [HourlyPriceExtraHour] IS NULL;
 
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('OrderDetails') AND name = 'RejectReason')
         BEGIN
@@ -155,11 +162,6 @@ using (var scope = app.Services.CreateScope())
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('OrderDetails') AND name = 'ProofImage')
         BEGIN
             ALTER TABLE [OrderDetails] ADD [ProofImage] NVARCHAR(MAX) NULL;
-        END
-
-        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'MergedParentTentId')
-        BEGIN
-            ALTER TABLE [Tents] ADD [MergedParentTentId] INT NULL;
         END
 
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Zones') AND name = 'TotalSlots')
@@ -177,31 +179,6 @@ using (var scope = app.Services.CreateScope())
             ALTER TABLE [Zones] ADD [GridCols] INT NOT NULL DEFAULT 5;
         END
 
-        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'Size')
-        BEGIN
-            ALTER TABLE [Tents] ADD [Size] NVARCHAR(50) NOT NULL DEFAULT 'Small';
-        END
-
-        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'SlotsOccupied')
-        BEGIN
-            ALTER TABLE [Tents] ADD [SlotsOccupied] INT NOT NULL DEFAULT 1;
-        END
-
-        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'SlotCode')
-        BEGIN
-            ALTER TABLE [Tents] ADD [SlotCode] NVARCHAR(50) NULL;
-        END
-
-        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'GridX')
-        BEGIN
-            ALTER TABLE [Tents] ADD [GridX] INT NOT NULL DEFAULT 0;
-        END
-
-        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tents') AND name = 'GridY')
-        BEGIN
-            ALTER TABLE [Tents] ADD [GridY] INT NOT NULL DEFAULT 0;
-        END
-
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'TentSetupDetails')
         BEGIN
             ALTER TABLE [Bookings] ADD [TentSetupDetails] NVARCHAR(MAX) NULL;
@@ -210,6 +187,11 @@ using (var scope = app.Services.CreateScope())
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'TentSetupSummary')
         BEGIN
             ALTER TABLE [Bookings] ADD [TentSetupSummary] NVARCHAR(250) NULL;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'AssignedQrCards')
+        BEGIN
+            ALTER TABLE [Bookings] ADD [AssignedQrCards] NVARCHAR(MAX) NULL;
         END
 
         IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TentTypes')
@@ -235,12 +217,26 @@ using (var scope = app.Services.CreateScope())
             (N'Lều Lớn (5-8 khách)', 'Large', 4, N'5 - 8 khách', 3, 1200000, 250000, 120000, N'Lều tập thể cỡ lớn, chiếm 4 ô đất (~12m²)', 1);
         END
 
-        EXEC('UPDATE [Tents] SET [Size] = ''Small'' WHERE [Size] IS NULL');
-        EXEC('UPDATE [Tents] SET [SlotsOccupied] = 1 WHERE [SlotsOccupied] IS NULL OR [SlotsOccupied] = 0');
-        EXEC('UPDATE [Tents] SET [SlotCode] = [Name] WHERE [SlotCode] IS NULL OR [SlotCode] = ''''');
+        EXEC('UPDATE [LandSlots] SET [Size] = ''Small'' WHERE [Size] IS NULL');
+        EXEC('UPDATE [LandSlots] SET [SlotsOccupied] = 1 WHERE [SlotsOccupied] IS NULL OR [SlotsOccupied] = 0');
+        EXEC('UPDATE [LandSlots] SET [SlotCode] = [Name] WHERE [SlotCode] IS NULL OR [SlotCode] = ''''');
         EXEC('UPDATE [Zones] SET [TotalSlots] = 20 WHERE [TotalSlots] IS NULL OR [TotalSlots] = 0');
         EXEC('UPDATE [Zones] SET [GridRows] = 4 WHERE [GridRows] IS NULL OR [GridRows] = 0');
-        EXEC('UPDATE [Zones] SET [GridCols] = 5 WHERE [GridCols] IS NULL OR [GridCols] = 0');";
+        EXEC('UPDATE [Zones] SET [GridCols] = 5 WHERE [GridCols] IS NULL OR [GridCols] = 0');
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'QrCards')
+        BEGIN
+            CREATE TABLE [QrCards] (
+                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                [CardCode] NVARCHAR(50) NOT NULL UNIQUE,
+                [Status] NVARCHAR(50) NOT NULL DEFAULT 'Available',
+                [CurrentBookingId] INT NULL,
+                [AssignedPlacement] NVARCHAR(100) NULL,
+                [Note] NVARCHAR(255) NULL,
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                [UpdatedAt] DATETIME2 NULL
+            );
+        END;";
 
         context.Database.ExecuteSqlRaw(sql);
     }

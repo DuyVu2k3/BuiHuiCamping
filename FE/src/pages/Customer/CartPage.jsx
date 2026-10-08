@@ -42,7 +42,7 @@ export default function CartPage() {
 
     try {
       setIsSubmitting(true);
-      const res = await fetch('https://localhost:7248/api/Orders', {
+      const res = await fetch(getApiUrl('/api/Orders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

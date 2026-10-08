@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChefHat, Flame, Clock, RefreshCw, Volume2, VolumeX, Maximize2, Layers, Grid, LogOut, CheckCircle2, AlertTriangle, BellRing } from 'lucide-react';
+import { ChefHat, Flame, Clock, RefreshCw, Volume2, VolumeX, Maximize2, Layers, Grid, LogOut, CheckCircle2, AlertTriangle, BellRing, Tent, Utensils, MapPin, User, Phone } from 'lucide-react';
 import { getApiUrl } from '../../apiConfig';
 import signalRService from '../../services/signalrService';
 import { useAuth } from '../../context/AuthContext';
@@ -175,9 +175,74 @@ export default function KitchenKdsPage() {
     return d;
   };
 
+  // Helper function to format order location accurately for Kitchen & Waiter
+  // Handles Ô Đất (Camping Slots), Tent setups (e.g. 2 Lều Nhỏ), and Dining Tables
+  const formatOrderLocation = (order) => {
+    const tent = order?.tent;
+    const booking = order?.booking;
+    
+    const rawZone = tent?.zoneName || tent?.zone?.Name || tent?.zone?.name || "";
+    const rawTentName = tent?.name || "";
+    const slotCode = tent?.slotCode || rawTentName;
+    const zoneType = tent?.zoneType || tent?.zone?.zoneType || "";
+
+    const zoneLower = rawZone.toLowerCase();
+    const nameLower = rawTentName.toLowerCase();
+    
+    const isTable = zoneType === 'DiningTable' ||
+      (tent?.tentType && (tent.tentType.toLowerCase().includes('bàn') || tent.tentType.toLowerCase().includes('tiệc'))) ||
+      zoneLower.includes("bàn") || zoneLower.includes("ẩm thực") || 
+      zoneLower.includes("nhà hàng") || zoneLower.includes("ăn uống") || 
+      nameLower.includes("bàn");
+
+    const zoneTitle = rawZone 
+      ? (rawZone.startsWith("Khu") ? rawZone : `Khu ${rawZone}`) 
+      : (isTable ? "Khu Ẩm Thực" : "Khu Cắm Trại");
+
+    if (isTable) {
+      const tableNumber = rawTentName.replace(/^Bàn\s*/i, '');
+      const tableTitle = `Bàn ${tableNumber || rawTentName}`;
+      return {
+        isTable: true,
+        zoneTitle,
+        primaryTitle: tableTitle,
+        secondaryDetail: null,
+        badgeText: "BÀN ĂN",
+        shortSummary: `${tableTitle} (${zoneTitle})`,
+        slotNumber: tableNumber,
+        icon: "🍽️"
+      };
+    }
+
+    // Camping Slot Logic:
+    const cleanSlot = (slotCode || rawTentName).replace(/^Ô\s*/i, '').replace(/^Lều\s*/i, '');
+    let slotsDisplay = `Ô ${cleanSlot}`;
+
+    // Determine Tent Setup detail:
+    let tentSetup = booking?.tentSetupSummary?.trim() || "";
+    if (!tentSetup) {
+      if (tent?.size === 'Small') tentSetup = "Lều Nhỏ (~3m²)";
+      else if (tent?.size === 'Medium') tentSetup = "Lều Trung (~6m²)";
+      else if (tent?.size === 'Large') tentSetup = "Lều Lớn (~12m²)";
+      else if (tent?.tentType && tent.tentType !== 'Standard') tentSetup = `Lều ${tent.tentType}`;
+    }
+
+    return {
+      isTable: false,
+      zoneTitle,
+      primaryTitle: slotsDisplay, // e.g. "Ô 03"
+      secondaryDetail: tentSetup || null, // e.g. "2 Lều Nhỏ (1-2 khách)"
+      badgeText: "LỀU TRẠI",
+      shortSummary: `${slotsDisplay}${tentSetup ? ` • ${tentSetup}` : ''}`,
+      icon: "⛺"
+    };
+  };
+
   // Aggregate dish items across all pending kitchen orders
   const aggregatedItems = orders.reduce((acc, order) => {
     const itemList = order.orderDetails || order.items || order.details || [];
+    const loc = formatOrderLocation(order);
+
     itemList.forEach(item => {
       const itemName = item.menuItem?.name || item.itemName || item.name || "Món ăn";
       if (!acc[itemName]) {
@@ -185,29 +250,13 @@ export default function KitchenKdsPage() {
           name: itemName,
           category: item.menuItem?.category || "Food",
           totalQuantity: 0,
-          tents: []
+          locations: []
         };
       }
       acc[itemName].totalQuantity += (item.quantity || 1);
       
-      const rawZone = order.tent?.zoneName || order.tent?.zone?.name || "";
-      const rawTentName = order.tent?.name || "";
-      const zoneLower = rawZone.toLowerCase();
-      const nameLower = rawTentName.toLowerCase();
-      const isTable = zoneLower.includes("bàn") || zoneLower.includes("ẩm thực") || zoneLower.includes("nhà hàng") || zoneLower.includes("ăn uống") || nameLower.includes("bàn");
-
-      let tentFormatted = rawTentName;
-      if (isTable) {
-        if (!nameLower.startsWith("bàn")) tentFormatted = `Bàn ${rawTentName}`;
-      } else {
-        if (!nameLower.startsWith("lều")) tentFormatted = `Lều ${rawTentName}`;
-      }
-
-      const zoneFormatted = (rawZone && !rawZone.startsWith("Khu")) ? `Khu ${rawZone}` : rawZone;
-      const tentLocation = zoneFormatted ? `${zoneFormatted} - ${tentFormatted}` : tentFormatted;
-
-      acc[itemName].tents.push({
-        tent: tentLocation,
+      acc[itemName].locations.push({
+        loc,
         qty: item.quantity || 1
       });
     });
@@ -249,11 +298,7 @@ export default function KitchenKdsPage() {
 
   // Helper to check if an order belongs to a Table or a Tent
   const isTableOrder = (order) => {
-    const rawZone = order.tent?.zoneName || order.tent?.zone?.name || "";
-    const rawTentName = order.tent?.name || "";
-    const zLower = rawZone.toLowerCase();
-    const tLower = rawTentName.toLowerCase();
-    return zLower.includes("bàn") || zLower.includes("ẩm thực") || zLower.includes("nhà hàng") || zLower.includes("ăn uống") || tLower.includes("bàn");
+    return formatOrderLocation(order).isTable;
   };
 
   const filteredOrders = orders.filter(o => {
@@ -367,7 +412,7 @@ export default function KitchenKdsPage() {
           {[
             { key: 'ALL', label: `Tất Cả Đơn (${orders.length})` },
             { key: 'TABLE', label: `Bàn Khu Ẩm Thực (${orders.filter(isTableOrder).length})` },
-            { key: 'TENT', label: `Lều Cắm Trại (${orders.filter(o => !isTableOrder(o)).length})` }
+            { key: 'TENT', label: `Ô Đất Cắm Trại (${orders.filter(o => !isTableOrder(o)).length})` }
           ].map(f => (
             <button
               key={f.key}
@@ -384,7 +429,7 @@ export default function KitchenKdsPage() {
         </div>
 
         <div className="text-xs text-slate-500 font-bold hidden sm:block">
-          Bàn Ăn: <span className="text-amber-700 font-extrabold">{orders.filter(isTableOrder).length}</span> • Lều: <span className="text-emerald-700 font-extrabold">{orders.filter(o => !isTableOrder(o)).length}</span>
+          Bàn Ăn: <span className="text-amber-700 font-extrabold">{orders.filter(isTableOrder).length}</span> • Ô Cắm Trại: <span className="text-emerald-700 font-extrabold">{orders.filter(o => !isTableOrder(o)).length}</span>
         </div>
       </div>
 
@@ -413,25 +458,12 @@ export default function KitchenKdsPage() {
             {viewMode === 'orders' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredOrders.map((order, index) => {
-                  const rawZone = order.tent?.zoneName || order.tent?.zone?.name || "";
-                  const rawTentName = order.tent?.name || "";
-                  const zoneLower = rawZone.toLowerCase();
-                  const nameLower = rawTentName.toLowerCase();
-                  const isTable = zoneLower.includes("bàn") || zoneLower.includes("ẩm thực") || zoneLower.includes("nhà hàng") || zoneLower.includes("ăn uống") || nameLower.includes("bàn");
-
-                  let tentFormatted = rawTentName;
-                  if (isTable) {
-                    if (!nameLower.startsWith("bàn")) tentFormatted = `Bàn ${rawTentName}`;
-                  } else {
-                    if (!nameLower.startsWith("lều")) tentFormatted = `Lều ${rawTentName}`;
-                  }
-
-                  const zoneFormatted = (rawZone && !rawZone.startsWith("Khu")) ? `Khu ${rawZone}` : rawZone;
-                  const tentLocation = zoneFormatted ? `${zoneFormatted} - ${tentFormatted}` : tentFormatted;
-
+                  const loc = formatOrderLocation(order);
                   const elapsedTime = getElapsedTimeInfo(order);
                   const itemList = order.orderDetails || order.items || order.details || [];
                   const orderDateObj = getOrderDate(order);
+                  const customerName = order.customerName || order.booking?.customerName || "Khách hàng";
+                  const phoneNumber = order.phoneNumber || order.booking?.phoneNumber;
 
                   return (
                     <div
@@ -439,27 +471,56 @@ export default function KitchenKdsPage() {
                       className="bg-white rounded-3xl border border-[#EBE3D5] overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md hover:border-[#1B4D3E]/40 transition-all duration-300 relative group"
                     >
                       {/* Order Header & Queue Index */}
-                      <div className="bg-[#FAF7F2] p-4 border-b border-[#EBE3D5] flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className="w-8 h-8 rounded-xl bg-[#1B4D3E] text-white font-black text-sm flex items-center justify-center shadow-xs">
-                            #{index + 1}
-                          </span>
-                          <div>
-                            <span className="text-[10px] font-black uppercase text-[#7C5A38] tracking-wider block">Vị Trí Giao</span>
-                            <h3 className="text-lg font-black text-[#1B4D3E] leading-tight">{tentLocation}</h3>
+                      <div className="bg-[#FAF7F2] p-4 border-b border-[#EBE3D5] space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="w-7 h-7 rounded-lg bg-[#1B4D3E] text-white font-black text-xs flex items-center justify-center shadow-2xs">
+                              #{index + 1}
+                            </span>
+                            <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
+                              loc.isTable 
+                                ? 'bg-amber-100 text-amber-900 border-amber-300' 
+                                : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                            }`}>
+                              {loc.icon} {loc.zoneTitle}
+                            </span>
+                          </div>
+
+                          {/* Live Timer Badge */}
+                          <div className={`px-2.5 py-1 rounded-xl text-xs font-bold border flex-shrink-0 ${elapsedTime.badgeColor}`}>
+                            {elapsedTime.text}
                           </div>
                         </div>
 
-                        {/* Live Timer Badge */}
-                        <div className={`px-2.5 py-1 rounded-xl text-xs font-bold border ${elapsedTime.badgeColor}`}>
-                          {elapsedTime.text}
+                        {/* Large Primary Slot / Table Title */}
+                        <div>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-[10px] font-black uppercase text-[#7C5A38] tracking-wider">VỊ TRÍ:</span>
+                            <h3 className="text-2xl font-black text-[#1B4D3E] tracking-tight leading-none">
+                              {loc.primaryTitle}
+                            </h3>
+                          </div>
+
+                          {/* Secondary Detail: Tent Setup (e.g. 2 Lều Nhỏ (1-2 khách)) */}
+                          {loc.secondaryDetail && (
+                            <div className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-950 text-xs font-black shadow-2xs">
+                              <span className="text-base leading-none">⛺</span>
+                              <div className="leading-tight">
+                                <span className="text-[10px] text-[#7C5A38] block font-bold uppercase tracking-wider">Loại lều:</span>
+                                <span className="font-extrabold text-[#1B4D3E] text-xs">{loc.secondaryDetail}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       {/* Customer Info Subheader */}
                       <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
-                        <span>Khách: <strong className="text-slate-800 font-bold">{order.customerName || order.booking?.customerName || "Khách tại lều"}</strong></span>
-                        <span className="font-mono text-[11px] font-bold">
+                        <div className="flex items-center gap-1.5 truncate pr-2">
+                          <User size={13} className="text-[#1B4D3E] flex-shrink-0" />
+                          <span className="truncate">Khách: <strong className="text-slate-800 font-bold">{customerName}</strong> {phoneNumber ? `(${phoneNumber})` : ''}</span>
+                        </div>
+                        <span className="font-mono text-[11px] font-bold text-slate-500 flex-shrink-0">
                           {orderDateObj ? orderDateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ""}
                         </span>
                       </div>
@@ -558,14 +619,23 @@ export default function KitchenKdsPage() {
                         </div>
                       </div>
 
-                      {/* Tents Breakdown */}
+                      {/* Location Breakdown */}
                       <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Phân bổ theo Lều:</span>
-                        <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
-                          {dish.tents.map((t, idx) => (
-                            <div key={idx} className="flex justify-between items-center text-xs bg-[#FAF7F2] p-2 rounded-xl border border-slate-200/60 font-extrabold text-slate-800">
-                              <span>{t.tent}</span>
-                              <span className="text-[#1B4D3E] font-black">x{t.qty}</span>
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Phân bổ theo Vị Trí:</span>
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                          {dish.locations?.map((itemLoc, idx) => (
+                            <div key={idx} className="flex justify-between items-center text-xs bg-[#FAF7F2] p-2.5 rounded-xl border border-slate-200/60 font-extrabold text-slate-800">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[#1B4D3E] font-black">{itemLoc.loc.primaryTitle}</span>
+                                {itemLoc.loc.secondaryDetail && (
+                                  <span className="text-[10px] text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border border-amber-200/60">
+                                    <span>⛺</span>
+                                    <span>{itemLoc.loc.secondaryDetail}</span>
+                                  </span>
+                                )}
+                                <span className="text-slate-400 font-semibold text-[10px]">({itemLoc.loc.zoneTitle})</span>
+                              </div>
+                              <span className="text-[#1B4D3E] font-black text-sm ml-2 flex-shrink-0">x{itemLoc.qty}</span>
                             </div>
                           ))}
                         </div>

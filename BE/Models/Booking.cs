@@ -38,6 +38,9 @@ namespace BuiHuiCamping.API.Models
         public string? TentSetupDetails { get; set; } = string.Empty;
         public string? TentSetupSummary { get; set; } = string.Empty; // e.g. "2 Lều Nhỏ (~3m²/lều)" or "1 Lều Trung (~6m²)"
         
+        // Pre-printed physical QR business cards assigned to this booking/tents
+        public string? AssignedQrCards { get; set; } = string.Empty; // JSON array of QrCard objects: [{ cardCode, note, isUnlocked, assignedAt }]
+        
         // Land slots (Tents table representing parcels) associated with this booking
         public ICollection<Tent> Tents { get; set; } = new List<Tent>();
         

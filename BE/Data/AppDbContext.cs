@@ -17,10 +17,15 @@ namespace BuiHuiCamping.API.Data
         public DbSet<OrderDetail> OrderDetails { get; set; }
         public DbSet<ServiceRequest> ServiceRequests { get; set; }
         public DbSet<User> Users { get; set; }
+        public DbSet<QrCard> QrCards { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<QrCard>()
+                .HasIndex(q => q.CardCode)
+                .IsUnique();
 
             modelBuilder.Entity<LandSlot>()
                 .ToTable("LandSlots");
