@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Plus, Tent, Map, QrCode, Download, Power, CheckCircle2, Lock, LayoutGrid, Settings, Edit, Layers, Compass, Utensils, Trash2, Box, Users, Sparkles, AlertCircle } from 'lucide-react';
+import { Plus, Tent, Map, QrCode, Download, Power, CheckCircle2, Lock, LayoutGrid, Settings, Edit, Layers, Compass, Utensils, Trash2, Box, Users, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
 import { getApiUrl } from '../../apiConfig';
@@ -174,6 +174,28 @@ export default function FacilityManagementPage() {
           const msg = err.response?.data || "Không thể xóa khu vực này (có thể khu vực đang có ô đất/bàn).";
           toast.error(typeof msg === 'string' ? msg : "Lỗi khi xóa khu vực");
         });
+    }
+  };
+
+  const handleToggleFlexibleMode = async (zoneId) => {
+    try {
+      const res = await axios.put(getApiUrl(`/api/Zones/${zoneId}/toggle-flexible-mode`));
+      toast.success(res.data.isFlexibleMode ? `Đã BẬT Chế độ Lễ hội cho ${res.data.name}!` : `Đã TẮT Chế độ Lễ hội cho ${res.data.name}!`);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      toast.error("Không thể thay đổi Chế độ Lễ hội");
+    }
+  };
+
+  const handleToggleAllFlexibleMode = async (enable) => {
+    try {
+      await axios.put(getApiUrl(`/api/Zones/toggle-all-flexible-mode`), { enabled: enable });
+      toast.success(enable ? "Đã BẬT Chế độ Lễ hội cho TẤT CẢ các khu cắm trại!" : "Đã TẮT Chế độ Lễ hội cho tất cả khu cắm trại!");
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      toast.error("Không thể cập nhật Chế độ Lễ hội");
     }
   };
 
@@ -530,43 +552,109 @@ export default function FacilityManagementPage() {
         </div>
       ) : activeTab === 'zones' ? (
         // ZONES VIEW
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={() => { setEditingZone(null); setNewZone({ name: '', description: '', zoneType: 'Camping', totalSlots: '20', gridCols: '5' }); setShowZoneModal(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95">
-              <Plus size={18} /> Thêm Khu Vực
-            </button>
-          </div>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-3xl bg-purple-50 border border-purple-200/80 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-purple-950">
+                      Chế độ Lễ hội
+                    </h3>
+                    <span className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border shadow-2xs ${
+                      zones.some(z => z.isFlexibleMode)
+                        ? 'bg-purple-600 text-white border-purple-700'
+                        : 'bg-white text-slate-600 border-slate-200'
+                    }`}>
+                      {zones.some(z => z.isFlexibleMode) ? 'Đang bật' : 'Đang tắt'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-purple-800 font-medium mt-0.5">
+                    Cho phép lễ tân ghép thêm lều và gộp ô linh hoạt dịp cao điểm
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleToggleAllFlexibleMode(true)}
+                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-sm transition-all active:scale-95"
+                >
+                  Bật Tất Cả
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleAllFlexibleMode(false)}
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold shadow-xs transition-all active:scale-95"
+                >
+                  Tắt Tất Cả
+                </button>
+                <button 
+                  onClick={() => { setEditingZone(null); setNewZone({ name: '', description: '', zoneType: 'Camping', totalSlots: '20', gridCols: '5' }); setShowZoneModal(true); }} 
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-all active:scale-95 ml-2"
+                >
+                  <Plus size={16} /> Thêm Khu Vực
+                </button>
+              </div>
+            </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {zones.map(zone => {
-              const isTableZone = zone.zoneType === 'DiningTable' || zone.name.toLowerCase().includes('bàn') || zone.name.toLowerCase().includes('ẩm thực') || zone.name.toLowerCase().includes('nhà hàng');
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+              {zones.map(zone => {
+                const isTableZone = zone.zoneType === 'DiningTable' || zone.name.toLowerCase().includes('bàn') || zone.name.toLowerCase().includes('ẩm thực') || zone.name.toLowerCase().includes('nhà hàng');
 
-              return (
-                <div key={zone.id} className="bg-white rounded-3xl p-6 shadow-[0_4px_24px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black ${isTableZone ? 'bg-amber-100 text-amber-900' : 'bg-emerald-50 text-emerald-600'}`}>
-                        <Map size={20} />
+                return (
+                  <div key={zone.id} className="bg-white rounded-3xl p-6 shadow-[0_4px_24px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black ${isTableZone ? 'bg-amber-100 text-amber-900' : 'bg-emerald-50 text-emerald-600'}`}>
+                          <Map size={20} />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-slate-800">{zone.name}</h3>
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${isTableZone ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-900 border border-emerald-300'}`}>
+                            {isTableZone ? 'Khu Bàn Ăn (QR Mở 24/7)' : 'Khu Lều Qua Đêm'}
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="text-xl font-bold text-slate-800">{zone.name}</h3>
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${isTableZone ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-900 border border-emerald-300'}`}>
-                          {isTableZone ? 'Khu Bàn Ăn (QR Mở 24/7)' : 'Khu Lều Qua Đêm'}
+                      <p className="text-slate-500 text-sm mb-4 mt-2">{zone.description || 'Chưa có mô tả'}</p>
+                      <div className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-100 flex justify-between items-center mb-3">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                          {isTableZone ? 'Số lượng bàn ăn' : 'Sức chứa bãi đất'}
+                        </span>
+                        <span className="text-sm font-extrabold text-emerald-600">
+                          {isTableZone ? `${zone.tents?.length || 0} bàn` : `${zone.totalSlots || 20} ô đất (~${(zone.totalSlots || 20) * 3}m²)`}
                         </span>
                       </div>
-                    </div>
-                    <p className="text-slate-500 text-sm mb-4 mt-2">{zone.description || 'Chưa có mô tả'}</p>
-                    <div className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-100 flex justify-between items-center mb-3">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        {isTableZone ? 'Số lượng bàn ăn' : 'Sức chứa bãi đất'}
-                      </span>
-                      <span className="text-sm font-extrabold text-emerald-600">
-                        {isTableZone ? `${zone.tents?.length || 0} bàn` : `${zone.totalSlots || 20} ô đất (~${(zone.totalSlots || 20) * 3}m²)`}
-                      </span>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2">
+                      {/* Festival Flexible Mode Switch for Camping Zones */}
+                      {!isTableZone && (
+                        <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 mb-4">
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">
+                              Chế độ Lễ hội
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              {zone.isFlexibleMode ? "Đang bật ghép lều" : "Đang tắt"}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleFlexibleMode(zone.id)}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              zone.isFlexibleMode ? 'bg-purple-600' : 'bg-slate-300'
+                            }`}
+                            title="Bật/Tắt chế độ ghép lều linh hoạt cho phân khu này"
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                zone.isFlexibleMode ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleOpenEditZoneModal(zone)}
                       className="flex-1 py-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-200 transition-all shadow-xs"

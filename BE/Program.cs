@@ -95,6 +95,11 @@ using (var scope = app.Services.CreateScope())
             ALTER TABLE [Zones] ADD [ZoneType] NVARCHAR(50) NOT NULL DEFAULT 'Camping';
         END
 
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Zones') AND name = 'IsFlexibleMode')
+        BEGIN
+            ALTER TABLE [Zones] ADD [IsFlexibleMode] BIT NOT NULL DEFAULT 0;
+        END
+
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Bookings') AND name = 'BookingType')
         BEGIN
             ALTER TABLE [Bookings] ADD [BookingType] NVARCHAR(50) NOT NULL DEFAULT 'Overnight';

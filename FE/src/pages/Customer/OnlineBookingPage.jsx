@@ -12,7 +12,6 @@ import {
   QrCode,
   Tent,
   ArrowRight,
-  Sparkles,
   Send,
   PhoneCall,
   Search,
@@ -505,15 +504,14 @@ export default function OnlineBookingPage() {
       <div className="bg-[#1B4D3E] text-white pt-10 pb-16 px-4 sm:px-8 relative overflow-hidden">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10">
           <div>
-            <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-widest mb-2">
-              <Sparkles size={16} /> Đặt Lều Giữ Chỗ Trực Tuyến
+            <div className="text-amber-300 font-bold text-xs uppercase tracking-widest mb-2">
+              Đặt Lều Giữ Chỗ Trực Tuyến
             </div>
             <h1 className="text-3xl sm:text-4xl font-black tracking-tight">
               Sơ Đồ Bãi Cắm Trại Bùi Hui
             </h1>
             <p className="text-emerald-100 text-sm mt-1 max-w-xl">
-              Chọn khoảng thời gian lưu trú và nhấp trực tiếp vào điểm lều trên
-              bản đồ 2D để xem giá và đặt cọc nhanh chóng.
+              Chọn thời gian lưu trú và chọn vị trí ô đất phù hợp trên bản đồ để đặt cọc.
             </p>
           </div>
 

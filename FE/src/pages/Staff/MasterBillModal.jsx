@@ -11,7 +11,6 @@ import {
   CreditCard,
   ShoppingBag,
   Loader2,
-  Sparkles,
   AlertCircle,
   Clock,
 } from "lucide-react";
@@ -542,7 +541,7 @@ export default function MasterBillModal({
                     {billData.tentSetupSummary && (
                       <div className="pl-6 pt-0.5">
                         <span className="text-[11px] font-extrabold text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-md border border-amber-300 inline-flex items-center gap-1">
-                          ⛺ Quy cách dựng lều: {billData.tentSetupSummary}
+                          Quy cách dựng: {billData.tentSetupSummary}
                         </span>
                       </div>
                     )}
@@ -649,7 +648,6 @@ export default function MasterBillModal({
                       {billData.remainingBalance?.toLocaleString("vi-VN")}đ
                     </p>
                   </div>
-                  <Sparkles size={24} className="text-emerald-300" />
                 </div>
               </div>
             </>

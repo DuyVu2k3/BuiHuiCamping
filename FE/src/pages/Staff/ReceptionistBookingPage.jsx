@@ -587,7 +587,12 @@ export default function ReceptionistBookingPage() {
       return toast.error("Số điện thoại không hợp lệ! Vui lòng nhập đúng 10 chữ số (bắt đầu bằng số 0).");
     }
 
-    if (totalSlotsOccupiedByTents > selectedTents.length) {
+    const isAnySelectedFlexible = selectedTents.some(t => {
+      const z = effectiveZones.find(ez => ez.id === t.zoneId || ez.id === t.zone?.id);
+      return z?.isFlexibleMode;
+    });
+
+    if (!isAnySelectedFlexible && totalSlotsOccupiedByTents > selectedTents.length) {
       return toast.error(`Số lượng lều vượt quá diện tích ${selectedTents.length} ô đất đã chọn (đang cần ${totalSlotsOccupiedByTents} ô)! Vui lòng bớt lều.`);
     }
     if (totalSlotsOccupiedByTents === 0) {
@@ -1128,7 +1133,7 @@ export default function ReceptionistBookingPage() {
         targetOut = new Date(targetIn.getTime() + 3600000);
       }
 
-      const activeBooking = tent.bookings?.find((b) => {
+      const allActiveBookings = (tent.bookings || []).filter((b) => {
         if (
           b.status === "CheckedOut" ||
           b.status === "Cancelled" ||
@@ -1163,30 +1168,57 @@ export default function ReceptionistBookingPage() {
 
         // Real-time interval overlap condition:
         // bIn < targetOut && bOut > targetIn
-        // If bOut <= targetIn (e.g. out at 12:00, search from 12:00), slot is vacant and free!
         return bIn < targetOut && bOut > targetIn;
       });
 
-      const status = activeBooking
-        ? activeBooking.status || "Booked"
-        : "Available";
+      let status = "Available";
+      if (allActiveBookings.some((b) => b.status === "Occupied")) {
+        status = "Occupied";
+      } else if (allActiveBookings.some((b) => b.status === "Booked")) {
+        status = "Booked";
+      } else if (allActiveBookings.some((b) => b.status === "Pending")) {
+        status = "Pending";
+      }
+
+      const activeBooking = allActiveBookings[0] || null;
 
       return {
         ...tent,
         status,
-        activeBooking: activeBooking || null,
-        bookings: activeBooking ? [activeBooking] : [],
+        activeBooking: activeBooking,
+        activeBookings: allActiveBookings,
+        bookings: allActiveBookings,
       };
     }),
   }));
 
-  const handleTentClick = (tent) => {
+  const handleTentClick = (tent, specificBooking = null) => {
     const parentZone =
       effectiveZones.find((z) => z.tents?.some((t) => t.id === tent.id)) ||
       tent.zone;
+    const isFlexible = parentZone?.isFlexibleMode;
     const zoneName = parentZone?.name || "";
-    const activeBooking = tent.activeBooking;
+    const activeBooking = specificBooking || tent.activeBooking;
+    const activeBookings = tent.activeBookings || (tent.bookings || []);
 
+    // 1. If receptionist is currently selecting tents (in create-booking flow):
+    if (selectedTents.length > 0) {
+      if (tent.status === "Available" || isFlexible) {
+        let updatedSelected = [];
+        if (selectedTents.find((t) => t.id === tent.id)) {
+          updatedSelected = selectedTents.filter((t) => t.id !== tent.id);
+        } else {
+          updatedSelected = [...selectedTents, tent];
+        }
+        setSelectedTents(updatedSelected);
+        if (tent.status !== "Available") {
+          toast.success(`Đã chọn thêm Ô ${tent.slotCode || tent.name} vào đơn ghép (Chế độ Lễ hội)!`);
+        }
+        return;
+      }
+    }
+
+    // 2. Available tent click:
     if (tent.status === "Available" && !activeBooking) {
       setActiveActionBooking(null);
       let updatedSelected = [];
@@ -1214,6 +1246,7 @@ export default function ReceptionistBookingPage() {
         }));
       }
     } else {
+      // 3. Occupied / Booked tent click -> Open Drawer
       setSelectedTents([]);
       if (activeBooking) {
         // Collect ALL tents belonging to this booking request across all zones
@@ -1231,6 +1264,9 @@ export default function ReceptionistBookingPage() {
         setActiveActionBooking({
           ...activeBooking,
           tentName: tent.name,
+          slotTent: tent,
+          parentZone: parentZone,
+          slotActiveBookings: activeBookings,
           zoneName: zoneName,
           bookingTents:
             bookingTents.length > 0 ? bookingTents : [{ ...tent, zoneName }],
@@ -1255,6 +1291,9 @@ export default function ReceptionistBookingPage() {
                         ...prev,
                         ...fresh,
                         bookingTents: prev.bookingTents,
+                        slotTent: prev.slotTent,
+                        parentZone: prev.parentZone,
+                        slotActiveBookings: prev.slotActiveBookings,
                       }
                     : prev,
                 );
@@ -1265,6 +1304,8 @@ export default function ReceptionistBookingPage() {
       } else {
         setActiveActionBooking({
           tentName: tent.name,
+          slotTent: tent,
+          parentZone: parentZone,
           zoneName: zoneName,
           bookingTents: [{ ...tent, zoneName }],
           status: tent.status,
@@ -1369,16 +1410,37 @@ export default function ReceptionistBookingPage() {
     <div
       className={`transition-all duration-300 ${isSidebarOpen ? "2xl:mr-[420px] xl:mr-[400px]" : ""}`}
     >
+      {/* Festival Flexible Mode Announcement Banner for Receptionists */}
+      {zones.some(z => z.isFlexibleMode) && (
+        <div className="mb-6 bg-purple-900 text-white px-5 py-3 rounded-2xl border border-purple-700 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse" />
+            <span className="font-bold text-sm">Chế độ lễ hội đang bật</span>
+            <span className="text-xs text-purple-200">
+              (Khu: <strong className="text-white">{zones.filter(z => z.isFlexibleMode).map(z => z.name).join(', ')}</strong>)
+            </span>
+          </div>
+          <span className="text-xs text-purple-200 font-medium">
+            Quản lý đã mở quyền ghép thêm lều linh hoạt vào các ô đất dịp cao điểm
+          </span>
+        </div>
+      )}
+
       {/* Header & Status Filter Pills */}
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
-              <Compass size={13} className="text-emerald-700" /> BÙI HUI CAMPING • LỄ TÂN
+              BÙI HUI CAMPING • LỄ TÂN
             </span>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-white text-slate-600 border border-slate-200 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Live Realtime
             </span>
+            {zones.some(z => z.isFlexibleMode) && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" /> Chế độ lễ hội đang bật
+              </span>
+            )}
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-heading">
             Sơ Đồ & Quản Lý Đặt Lều
@@ -1655,27 +1717,27 @@ export default function ReceptionistBookingPage() {
           <div className="flex bg-slate-100 p-1 rounded-2xl flex-wrap gap-1 border border-slate-200/70">
             <button
               onClick={() => setReceptionViewMode('flycam')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
                 receptionViewMode === 'flycam' ? 'bg-white text-emerald-900 shadow-sm border border-slate-200/80 font-black' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Compass size={15} className={receptionViewMode === 'flycam' ? 'text-emerald-700' : ''} /> Bản Đồ Flycam
+              Bản Đồ Flycam
             </button>
             <button
               onClick={() => setReceptionViewMode('grid')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
                 receptionViewMode === 'grid' ? 'bg-white text-emerald-900 shadow-sm border border-slate-200/80 font-black' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <LayoutGrid size={15} className={receptionViewMode === 'grid' ? 'text-emerald-700' : ''} /> Ma Trận Mặt Bằng
+              Ma Trận Mặt Bằng
             </button>
             <button
               onClick={() => setReceptionViewMode('cards')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
                 receptionViewMode === 'cards' ? 'bg-white text-emerald-900 shadow-sm border border-slate-200/80 font-black' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Layers size={15} className={receptionViewMode === 'cards' ? 'text-emerald-700' : ''} /> Danh Sách Thẻ
+              Danh Sách Thẻ
             </button>
           </div>
         </div>
@@ -1755,10 +1817,15 @@ export default function ReceptionistBookingPage() {
                   <div className="flex items-center gap-3">
                     <div className="w-2.5 h-8 bg-emerald-800 rounded-full" />
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-heading text-xl font-black text-slate-900">
                           {zone.name}
                         </h3>
+                        {zone.isFlexibleMode && (
+                          <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-300">
+                            Chế độ lễ hội
+                          </span>
+                        )}
                         {!isDining && (
                           <span className={`text-[11px] font-black px-3 py-1 rounded-full border shadow-2xs ${
                             percentUsed >= 90 ? 'bg-rose-50 text-rose-700 border-rose-200' :
@@ -1907,7 +1974,7 @@ export default function ReceptionistBookingPage() {
                             </p>
                             {activeBooking?.tentSetupSummary && (
                               <p className="text-[10px] text-emerald-800 font-bold truncate mt-0.5">
-                                ⛺ {activeBooking.tentSetupSummary}
+                                {activeBooking.tentSetupSummary}
                               </p>
                             )}
                           </>
@@ -2146,8 +2213,8 @@ export default function ReceptionistBookingPage() {
                 <section className="space-y-5">
                   {/* 1. Loại hình & Thời gian thuê */}
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
-                    <h4 className="text-xs font-black text-[#1B4D3E] uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-200/60 pb-2">
-                      <Compass size={15} /> 1. HÌNH THỨC & THỜI GIAN THUÊ
+                    <h4 className="text-xs font-black text-[#1B4D3E] uppercase tracking-wider border-b border-slate-200/60 pb-2">
+                      Hình thức & thời gian thuê
                     </h4>
 
                     <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200/60 rounded-xl">
@@ -2401,18 +2468,18 @@ export default function ReceptionistBookingPage() {
                     )}
                   </div>
 
-                  {/* 2. BỐ TRÍ & SETUP LỀU TRÊN VÙNG ĐẤT ĐÃ CHỌN */}
+                  {/* BỐ TRÍ & SETUP LỀU TRÊN VÙNG ĐẤT ĐÃ CHỌN */}
                   <div className="bg-gradient-to-br from-amber-500/10 via-amber-50/60 to-emerald-500/10 p-4 rounded-2xl border-2 border-amber-300 shadow-sm space-y-3.5">
                     <div className="flex items-center justify-between border-b border-amber-200/70 pb-2">
-                      <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
-                        <Tent size={16} className="text-amber-600" /> 2. BỐ TRÍ LỀU TRÊN {selectedTents.length} Ô ĐẤT
+                      <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">
+                        Bố trí lều trên {selectedTents.length} ô đất
                       </h4>
                       <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-mono">
                         ~{selectedTents.length * 3}m²
                       </span>
                     </div>
 
-                    {/* Quick Combo Presets (1-Click) */}
+                    {/* Quick Combo Presets */}
                     {(() => {
                       const presets = getQuickPresetsForSlots(selectedTents.length);
                       if (presets.length === 0) return null;
@@ -2429,13 +2496,12 @@ export default function ReceptionistBookingPage() {
                                   key={idx}
                                   type="button"
                                   onClick={() => setTentSetupConfig(preset.config)}
-                                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 border shadow-2xs active:scale-95 ${
+                                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center border shadow-2xs active:scale-95 ${
                                     isSelected
                                       ? 'bg-amber-500 text-slate-950 border-amber-600 ring-2 ring-amber-300 font-black'
                                       : 'bg-white text-slate-700 hover:bg-amber-50 border-slate-200 hover:border-amber-300'
                                   }`}
                                 >
-                                  <Sparkles size={11} className={isSelected ? 'text-slate-950' : 'text-amber-500'} />
                                   <span>{preset.label}</span>
                                 </button>
                               );
@@ -2576,10 +2642,10 @@ export default function ReceptionistBookingPage() {
                     </div>
                   </div>
 
-                  {/* 3. Thông tin khách */}
+                  {/* Thông tin khách */}
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
-                    <h4 className="text-xs font-black text-[#1B4D3E] uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-200/60 pb-2">
-                      <User size={15} /> 3. Thông Tin Khách Hàng
+                    <h4 className="text-xs font-black text-[#1B4D3E] uppercase tracking-wider border-b border-slate-200/60 pb-2">
+                      Thông Tin Khách Hàng
                     </h4>
 
                     <div className="space-y-3">
@@ -2639,11 +2705,11 @@ export default function ReceptionistBookingPage() {
                     </div>
                   </div>
 
-                  {/* 4. Chi tiết Các Ô Đất Đang Gộp */}
+                  {/* Chi tiết Các Ô Đất Đang Gộp */}
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
                     <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
-                      <h4 className="text-xs font-black text-[#1B4D3E] uppercase tracking-wider flex items-center gap-1.5">
-                        <Home size={15} /> 4. CÁC Ô ĐẤT ĐANG GỘP ({selectedTents.length} Ô)
+                      <h4 className="text-xs font-black text-[#1B4D3E] uppercase tracking-wider">
+                        Các ô đất đang chọn ({selectedTents.length} ô)
                       </h4>
                       <span className="text-[10px] font-black text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
                         Tổng ~{selectedTents.length * 3}m²
@@ -2677,9 +2743,16 @@ export default function ReceptionistBookingPage() {
                                 <span className="text-[11px] font-bold text-slate-700 block">
                                   {zoneNameFormatted}
                                 </span>
-                                <span className="text-[10px] text-slate-400">
-                                  Ô chuẩn đơn vị ~3m²
-                                </span>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="text-[10px] text-slate-400">
+                                    Ô chuẩn đơn vị ~3m²
+                                  </span>
+                                  {tent.status !== "Available" && (
+                                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200">
+                                      Ghép Lễ Hội
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
 
@@ -2697,11 +2770,11 @@ export default function ReceptionistBookingPage() {
                     </div>
                   </div>
 
-                  {/* 5. Tiền Cọc & Bảng Giá */}
+                  {/* Tiền Cọc & Bảng Giá */}
                   <div className="bg-amber-50/60 p-4 rounded-2xl border border-amber-200/80 space-y-3">
                     <div className="flex justify-between items-center border-b border-amber-200/60 pb-2">
-                      <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
-                        <CreditCard size={15} /> 5. TIỀN CỌC & BẢNG GIÁ
+                      <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">
+                        Tiền cọc & bảng giá
                       </h4>
                     </div>
                     <div className="flex justify-between items-center text-sm font-bold text-slate-700">
@@ -2871,6 +2944,62 @@ export default function ReceptionistBookingPage() {
                     )}
                   </div>
 
+                  {/* Festival Freestyle Action Button */}
+                  {activeActionBooking.parentZone?.isFlexibleMode && (
+                    <div className="bg-purple-50 p-3 rounded-2xl border border-purple-200/80 shadow-xs space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetSlotTent = activeActionBooking.slotTent || activeActionBooking.bookingTents?.[0];
+                          if (targetSlotTent) {
+                            setActiveActionBooking(null);
+                            setSelectedTents([targetSlotTent]);
+                            toast.success(`Đã chọn Ô ${targetSlotTent.slotCode || targetSlotTent.name} để ghép thêm đơn mới!`);
+                          }
+                        }}
+                        className="w-full py-2.5 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center justify-center transition-all cursor-pointer"
+                      >
+                        Ghép thêm lều vào ô này
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Multiple Active Bookings Switcher for this slot */}
+                  {activeActionBooking.slotActiveBookings && activeActionBooking.slotActiveBookings.length > 1 && (
+                    <div className="bg-slate-100/90 p-3 rounded-2xl border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                          <Users size={13} className="text-purple-600" />
+                          Ô Đất Này Đang Ghép {activeActionBooking.slotActiveBookings.length} Đơn Khách:
+                        </span>
+                      </div>
+                      <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                        {activeActionBooking.slotActiveBookings.map((b, idx) => {
+                          const isCurrent = activeActionBooking.id === b.id;
+                          return (
+                            <button
+                              key={b.id || idx}
+                              type="button"
+                              onClick={() => handleTentClick(activeActionBooking.slotTent, b)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer ${
+                                isCurrent
+                                  ? 'bg-purple-600 text-white shadow-sm ring-2 ring-purple-300'
+                                  : 'bg-white text-slate-700 hover:bg-purple-50 border border-slate-200'
+                              }`}
+                            >
+                              <span>#{idx + 1}: {b.customerName || 'Khách'}</span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-extrabold ${
+                                b.status === 'Occupied' ? 'bg-rose-500 text-white' : 'bg-amber-400 text-slate-950'
+                              }`}>
+                                {b.status === 'Occupied' ? 'Đang ở' : 'Đã cọc'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Customer Contact & Booking Schedule Details Card */}
                   <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/90 space-y-3 shadow-xs">
                     {/* Avatar + Name + Phone */}
@@ -2890,7 +3019,7 @@ export default function ReceptionistBookingPage() {
                           href={`tel:${activeActionBooking.phoneNumber}`}
                           className="text-xs text-rose-700 font-mono font-bold flex items-center gap-1 mt-0.5 hover:underline"
                         >
-                          📞 {activeActionBooking.phoneNumber || "Chưa có SĐT"}
+                          {activeActionBooking.phoneNumber || "Chưa có SĐT"}
                         </a>
                       </div>
                     </div>
@@ -3102,7 +3231,7 @@ export default function ReceptionistBookingPage() {
                             >
                               <div className="flex items-center gap-2.5">
                                 <div className="w-9 h-9 rounded-xl bg-white text-emerald-800 flex items-center justify-center shadow-2xs border border-emerald-200/80 font-black text-sm flex-shrink-0">
-                                  ⛺
+                                  <Tent size={16} />
                                 </div>
                                 <div>
                                   <div className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
@@ -3165,7 +3294,7 @@ export default function ReceptionistBookingPage() {
                                   key={card.cardCode || idx}
                                   className="inline-flex items-center gap-1.5 text-xs font-black px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-800 shadow-2xs"
                                 >
-                                  <span>🏷️ {card.cardCode}</span>
+                                  <span>{card.cardCode}</span>
                                   <span
                                     className={`w-2 h-2 rounded-full ${
                                       card.isUnlocked
@@ -3457,7 +3586,7 @@ export default function ReceptionistBookingPage() {
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200 shrink-0">
-                              🏷️ {card.cardCode}
+                              {card.cardCode}
                             </span>
                             <div className="min-w-0">
                               <p className="font-bold text-slate-800 text-[11px] truncate">
@@ -3485,7 +3614,7 @@ export default function ReceptionistBookingPage() {
                               }`}
                               title={card.isUnlocked ? "Bấm để KHÓA đặt món thẻ này" : "Bấm để MỞ đặt món thẻ này"}
                             >
-                              {card.isUnlocked ? "🟢 MỞ" : "🔒 KHÓA"}
+                              {card.isUnlocked ? "Mở" : "Khóa"}
                             </button>
                             <button
                               type="button"
@@ -3615,7 +3744,7 @@ export default function ReceptionistBookingPage() {
                           }
                           className="px-2.5 py-1.5 rounded-lg bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-50 text-[11px] font-bold cursor-pointer transition-colors shadow-2xs"
                         >
-                          ⛺ {item.name}
+                          {item.name}
                         </button>
                       ))}
                       <button
@@ -3628,7 +3757,7 @@ export default function ReceptionistBookingPage() {
                         }
                         className="px-2.5 py-1.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 text-[11px] font-bold cursor-pointer transition-colors shadow-2xs"
                       >
-                        🍖 Bàn BBQ ngoài trời
+                        Bàn BBQ ngoài trời
                       </button>
                       <button
                         type="button"
@@ -3640,7 +3769,7 @@ export default function ReceptionistBookingPage() {
                         }
                         className="px-2.5 py-1.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 text-[11px] font-bold cursor-pointer transition-colors shadow-2xs"
                       >
-                        👤 Trưởng đoàn
+                        Trưởng đoàn
                       </button>
                     </div>
                   </div>
@@ -3842,7 +3971,7 @@ export default function ReceptionistBookingPage() {
                                 : "bg-white text-slate-700 hover:bg-amber-100 border-slate-200 hover:border-amber-300"
                             }`}
                           >
-                            <span>⛺ {preset.label}</span>
+                            <span>{preset.label}</span>
                             {isSelected && <Check size={12} strokeWidth={3} />}
                           </button>
                         );

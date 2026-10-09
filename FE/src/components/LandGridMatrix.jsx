@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tent, Users, MapPin, Check, Plus, Eye, QrCode, Layers, Info, CheckCircle2, Clock, Edit, Trash2, Sparkles } from 'lucide-react';
+import { Tent, Users, MapPin, Check, Plus, Eye, QrCode, Layers, Info, CheckCircle2, Clock, Edit, Trash2 } from 'lucide-react';
 
 export default function LandGridMatrix({
   zone,
@@ -84,13 +84,20 @@ export default function LandGridMatrix({
                   ({cols} cột × {rows} hàng = {totalSlots} ô)
                 </span>
               </h3>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
-                {zone.description || 'Định lượng mặt bằng khu đất chia theo ô chuẩn ~3m²/ô'}
-              </p>
+              {zone.description && (
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  {zone.description}
+                </p>
+              )}
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {zone?.isFlexibleMode && (
+              <span className="text-xs font-black px-3 py-1.5 rounded-full bg-purple-100 text-purple-900 border border-purple-300">
+                Chế độ lễ hội
+              </span>
+            )}
             <span className={`text-xs font-black px-3 py-1.5 rounded-full border shadow-xs ${
               percentUsed >= 90 ? 'bg-rose-50 text-rose-700 border-rose-200' :
               percentUsed >= 70 ? 'bg-amber-50 text-amber-700 border-amber-200' :
@@ -158,10 +165,6 @@ export default function LandGridMatrix({
               Đang có khách lưu trú
             </span>
           </div>
-          <span className="text-[11px] text-amber-800 font-semibold flex items-center gap-1">
-            <Sparkles size={13} className="text-amber-500" />
-            Di chuột vào ô đã đặt để phát sáng toàn bộ các ô thuộc cùng đơn đặt gộp
-          </span>
         </div>
 
         {/* Matrix Tiles */}
@@ -217,6 +220,13 @@ export default function LandGridMatrix({
                   : tent.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected'));
             const tentBookingId = activeBooking?.id;
 
+            const activeBookings = isAvailable
+              ? []
+              : (tent.activeBookings && tent.activeBookings.length > 0
+                  ? tent.activeBookings
+                  : (tent.bookings?.filter(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected') || (activeBooking ? [activeBooking] : [])));
+            const hasMultipleBookings = activeBookings.length > 1;
+
             const siblingTentsInBooking = (!isAvailable && tentBookingId)
               ? zoneTents.filter(t => {
                   if (t.status === 'Available') return false;
@@ -226,11 +236,11 @@ export default function LandGridMatrix({
               : [];
             const isGrouped = siblingTentsInBooking.length > 1;
 
-            const isLinkedToHoveredBooking = Boolean(hoveredBookingId && tentBookingId === hoveredBookingId);
+            const isLinkedToHoveredBooking = Boolean(hoveredBookingId && (tentBookingId === hoveredBookingId || activeBookings.some(b => b.id === hoveredBookingId)));
             const isDimmed = Boolean(hoveredBookingId && !isLinkedToHoveredBooking);
             const isSelected = selectedTentIds.includes(tent.id);
-            const isOccupied = !isAvailable && tent.status === 'Occupied';
-            const isBooked = !isAvailable && (tent.status === 'Booked' || tent.status === 'Pending');
+            const isOccupied = !isAvailable && (tent.status === 'Occupied' || activeBookings.some(b => b.status === 'Occupied'));
+            const isBooked = !isAvailable && !isOccupied && (tent.status === 'Booked' || tent.status === 'Pending' || activeBookings.some(b => b.status === 'Booked' || b.status === 'Pending'));
 
             return (
               <div
@@ -261,17 +271,25 @@ export default function LandGridMatrix({
                       ? 'opacity-35 scale-95 transition-all'
                       : isSelected
                         ? 'border-amber-400 bg-amber-50 ring-4 ring-amber-300/70 shadow-md scale-[1.02] z-10'
-                        : isOccupied
-                          ? 'border-rose-300 bg-rose-50/70 hover:border-rose-400 hover:shadow-sm'
-                          : isBooked
-                            ? 'border-amber-300 bg-amber-50/60 hover:border-amber-400 hover:shadow-sm'
-                            : 'border-emerald-300 bg-emerald-50/70 hover:border-emerald-500 hover:shadow-md'
+                        : hasMultipleBookings
+                          ? (isOccupied 
+                              ? 'border-purple-400 bg-purple-50/70 hover:border-purple-500 hover:shadow-md' 
+                              : 'border-purple-300 bg-purple-50/50 hover:border-purple-400 hover:shadow-sm')
+                          : isOccupied
+                            ? 'border-rose-300 bg-rose-50/70 hover:border-rose-400 hover:shadow-sm'
+                            : isBooked
+                              ? 'border-amber-300 bg-amber-50/60 hover:border-amber-400 hover:shadow-sm'
+                              : 'border-emerald-300 bg-emerald-50/70 hover:border-emerald-500 hover:shadow-md'
                 }`}
               >
                 {/* Header: Slot Code & Group / Size Badge */}
                 <div className="flex justify-between items-center text-[10px]">
                   <span className="font-mono font-extrabold text-slate-800">Ô {slot.slotCode}</span>
-                  {isGrouped ? (
+                  {hasMultipleBookings ? (
+                    <span className="px-1.5 py-0.5 rounded-md font-black text-[9px] bg-purple-600 text-white border border-purple-700 shadow-xs">
+                      Ghép {activeBookings.length} đơn
+                    </span>
+                  ) : isGrouped ? (
                     <span className="px-1.5 py-0.5 rounded-md font-black text-[9px] bg-amber-400 text-slate-950 border border-amber-500 shadow-xs">
                       Gộp {siblingTentsInBooking.length} ô
                     </span>
@@ -288,13 +306,17 @@ export default function LandGridMatrix({
                     {isTableZone ? (tent.name.startsWith('Bàn') ? tent.name : `Bàn ${tent.name}`) : `Ô ${tent.slotCode || tent.name}`}
                   </p>
                   <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
-                    {isGrouped ? (
+                    {hasMultipleBookings ? (
+                      <span className="text-purple-800 font-bold block truncate" title={activeBookings.map(b => b.customerName).join(', ')}>
+                        {activeBookings.map(b => b.customerName || 'Khách').join(' + ')}
+                      </span>
+                    ) : isGrouped ? (
                       <span className="text-amber-800 font-bold block truncate">
-                        {activeBooking?.tentSetupSummary ? `⛺ ${activeBooking.tentSetupSummary}` : (activeBooking?.customerName || 'Lều Gộp')}
+                        {activeBooking?.tentSetupSummary ? activeBooking.tentSetupSummary : (activeBooking?.customerName || 'Lều Gộp')}
                       </span>
                     ) : activeBooking?.tentSetupSummary ? (
                       <span className="text-emerald-800 font-bold block truncate">
-                        ⛺ {activeBooking.tentSetupSummary}
+                        {activeBooking.tentSetupSummary}
                       </span>
                     ) : isAvailable ? (
                       <span className="text-slate-400">Sẵn sàng đón khách</span>
@@ -308,15 +330,18 @@ export default function LandGridMatrix({
                 <div className="flex justify-between items-center pt-1 border-t border-slate-200/50 text-[10px]">
                   <span className={`font-bold flex items-center gap-1 ${
                     isLinkedToHoveredBooking || isSelected ? 'text-amber-800' :
+                    hasMultipleBookings ? 'text-purple-700' :
                     isOccupied ? 'text-rose-700' :
                     isBooked ? 'text-amber-700' : 'text-emerald-700'
                   }`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${
                       isLinkedToHoveredBooking || isSelected ? 'bg-amber-500' :
+                      hasMultipleBookings ? 'bg-purple-600' :
                       isOccupied ? 'bg-rose-500' :
                       isBooked ? 'bg-amber-500' : 'bg-emerald-500'
                     }`} />
-                    {isLinkedToHoveredBooking ? `Lều gộp (${siblingTentsInBooking.length} ô)` :
+                    {hasMultipleBookings ? `Ghép (${activeBookings.length} đơn)` :
+                     isLinkedToHoveredBooking ? `Lều gộp (${siblingTentsInBooking.length} ô)` :
                      isSelected ? 'Đang chọn' :
                      isOccupied ? 'Đang ở' :
                      isBooked ? 'Đã cọc' : 'Sẵn sàng'}

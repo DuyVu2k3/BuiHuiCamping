@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Clock, Flame, Info, ChefHat, BellRing, Eye, AlertTriangle, Image as ImageIcon, RefreshCw, X } from 'lucide-react';
+import { CheckCircle2, Clock, Info, ChefHat, BellRing, Eye, AlertTriangle, Image as ImageIcon, RefreshCw, X } from 'lucide-react';
 import { getApiUrl } from '../../apiConfig';
 import signalRService from '../../services/signalrService';
 import { formatVnDateTime } from './MasterBillModal';
@@ -107,7 +107,7 @@ export default function ReceptionistOrdersPage() {
             <h1 className="text-3xl font-black text-slate-800 tracking-tight">Giám Sát & Nhật Ký Đi Đơn</h1>
             <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase">Real-time Live</span>
           </div>
-          <p className="text-slate-500 font-medium text-xs mt-1">Đơn đặt từ QR đến thẳng Bếp ➔ Bếp báo Chạy bàn ➔ Chạy bàn giao & chụp ảnh xác nhận</p>
+          <p className="text-slate-500 font-medium text-xs mt-1">Theo dõi tiến độ thực hiện và lịch sử giao món từ bếp đến khách hàng</p>
         </div>
 
         <button

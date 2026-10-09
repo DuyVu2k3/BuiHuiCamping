@@ -6,8 +6,6 @@ import {
   MapPin, 
   CheckCircle2, 
   Users, 
-  Layers, 
-  Compass, 
   Check, 
   AlertCircle, 
   Plus, 
@@ -16,7 +14,6 @@ import {
   Eye, 
   EyeOff, 
   LayoutGrid, 
-  Sparkles,
   Move,
   Save,
   Sliders,
@@ -481,7 +478,9 @@ export default function CampsiteMap({
                 : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
             }`}
           >
-            <Compass size={14} />
+            {campingZones.some(z => z.isFlexibleMode) && (
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" title="Có khu vực đang bật chế độ lễ hội" />
+            )}
             Tất Cả Khu Vực ({campingZones.length} Khu)
           </button>
 
@@ -498,8 +497,15 @@ export default function CampsiteMap({
                     : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                 }`}
               >
-                <Layers size={14} />
-                {z.name} (Còn {cap.availableSlots} ô)
+                {z.isFlexibleMode && (
+                  <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-purple-300' : 'bg-purple-600'} animate-pulse`} />
+                )}
+                <span>{z.name} (Còn {cap.availableSlots} ô)</span>
+                {z.isFlexibleMode && (
+                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-purple-800 text-purple-200' : 'bg-purple-100 text-purple-900'}`}>
+                    Lễ hội
+                  </span>
+                )}
               </button>
             );
           })}
@@ -594,7 +600,6 @@ export default function CampsiteMap({
               className="px-3.5 py-2 rounded-xl font-bold text-xs bg-indigo-600/90 hover:bg-indigo-600 text-white border border-indigo-400/50 flex items-center gap-1.5 shadow-sm transition-all active:scale-95 disabled:opacity-50"
               title="Tự động xếp 16 ô đất thành 3 hàng theo bản vẽ tay thực tế của Bùi Hui"
             >
-              <Sparkles size={14} className="text-amber-300" />
               Xếp 16 Ô Theo Bản Vẽ
             </button>
 
@@ -848,8 +853,6 @@ export default function CampsiteMap({
               const isDragging = draggingTentId === tent.id;
               const isHovered = hoveredSlot?.id === tent.id;
               const isAvailable = tent.status === 'Available';
-              const isOccupied = !isAvailable && tent.status === 'Occupied';
-              const isBooked = !isAvailable && (tent.status === 'Booked' || tent.status === 'Pending');
 
               const activeBooking = isAvailable 
                 ? null 
@@ -857,6 +860,16 @@ export default function CampsiteMap({
                     ? tent.activeBooking 
                     : tent.bookings?.find(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected'));
               const tentBookingId = activeBooking?.id;
+
+              const activeBookings = isAvailable
+                ? []
+                : (tent.activeBookings && tent.activeBookings.length > 0
+                    ? tent.activeBookings
+                    : (tent.bookings?.filter(b => b.status !== 'CheckedOut' && b.status !== 'Cancelled' && b.status !== 'Rejected') || (activeBooking ? [activeBooking] : [])));
+              const hasMultipleBookings = activeBookings.length > 1;
+
+              const isOccupied = !isAvailable && (tent.status === 'Occupied' || activeBookings.some(b => b.status === 'Occupied'));
+              const isBooked = !isAvailable && !isOccupied && (tent.status === 'Booked' || tent.status === 'Pending' || activeBookings.some(b => b.status === 'Booked' || b.status === 'Pending'));
 
               const groupedSiblingSlots = (!isAvailable && tentBookingId) 
                 ? placedTents.filter(t => {
@@ -867,7 +880,7 @@ export default function CampsiteMap({
                 : [];
               const isGrouped = groupedSiblingSlots.length > 1;
 
-              const isLinkedToHoveredBooking = Boolean(hoveredBookingId && tentBookingId === hoveredBookingId);
+              const isLinkedToHoveredBooking = Boolean(hoveredBookingId && (tentBookingId === hoveredBookingId || activeBookings.some(b => b.id === hoveredBookingId)));
               const isDimmed = Boolean(hoveredBookingId && !isLinkedToHoveredBooking);
 
               const displayCode = tent.slotCode || tent.name.replace(/^Lều\s+/i, '');
@@ -887,7 +900,16 @@ export default function CampsiteMap({
               let statusLabel = 'TRỐNG';
               let statusTextColor = isHovered ? '#6ee7b7' : 'rgba(167, 243, 208, 0.88)'; // Legible mint
 
-              if (isOccupied) {
+              if (hasMultipleBookings) {
+                fillGradient = isHovered ? 'rgba(147, 51, 234, 0.28)' : 'rgba(126, 34, 206, 0.20)';
+                strokeColor = isHovered ? '#a855f7' : '#9333ea';
+                strokeWidth = isHovered ? 2.0 : 1.6;
+                tentStrokeColor = '#d8b4fe';
+                tentFillColor = 'rgba(147, 51, 234, 0.15)';
+                tentDoorColor = 'rgba(168, 85, 247, 0.4)';
+                statusLabel = `GHÉP ${activeBookings.length} ĐƠN`;
+                statusTextColor = '#d8b4fe';
+              } else if (isOccupied) {
                 fillGradient = isHovered ? 'rgba(244, 63, 94, 0.30)' : 'url(#occupiedGrad)';
                 strokeColor = isHovered ? '#f43f5e' : 'rgba(244, 63, 94, 0.75)'; // Clear rose border
                 strokeWidth = isHovered ? 1.5 : 1.3;
@@ -1009,7 +1031,29 @@ export default function CampsiteMap({
                   </text>
 
                   {/* Top-Right Badge: Group or Single Status Indicator */}
-                  {isGrouped ? (
+                  {hasMultipleBookings ? (
+                    <g>
+                      <rect
+                        x={2}
+                        y={-16.5}
+                        width={23}
+                        height={9}
+                        rx={3}
+                        fill="#7c3aed"
+                      />
+                      <text
+                        x={13.5}
+                        y={-12}
+                        fill="#ffffff"
+                        fontSize={5.0}
+                        fontWeight={900}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                      >
+                        GHÉP {activeBookings.length}
+                      </text>
+                    </g>
+                  ) : isGrouped ? (
                     <g>
                       <rect
                         x={3}
@@ -1312,8 +1356,7 @@ export default function CampsiteMap({
                 {isGrouped && activeBooking ? (
                   <>
                     <div className="flex justify-between items-center mb-1">
-                      <span className="font-black text-xs text-amber-300 flex items-center gap-1.5">
-                        <Sparkles size={14} className="text-amber-400" />
+                      <span className="font-black text-xs text-amber-300">
                         LỀU GỘP ({groupedSiblingSlots.length} Ô ĐẤT)
                       </span>
                       <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border ${
@@ -1328,7 +1371,7 @@ export default function CampsiteMap({
                       </p>
                       {activeBooking.tentSetupSummary && (
                         <p className="text-amber-300 font-bold bg-amber-950/70 p-1 rounded-lg border border-amber-500/30 flex items-center gap-1">
-                          <span>⛺ Setup:</span>
+                          <span>Setup:</span>
                           <span className="text-white">{activeBooking.tentSetupSummary}</span>
                         </p>
                       )}
@@ -1337,9 +1380,6 @@ export default function CampsiteMap({
                       {activeBooking.depositAmount > 0 && (
                         <p>Đã cọc: <strong className="text-amber-400">{activeBooking.depositAmount.toLocaleString('vi-VN')}đ</strong></p>
                       )}
-                    </div>
-                    <div className="mt-2 text-[9px] text-amber-300/95 font-semibold bg-amber-950/70 px-2 py-1 rounded-lg border border-amber-500/30 flex items-center gap-1">
-                      <Info size={11} /> Cả {groupedSiblingSlots.length} ô này thuộc cùng 1 đơn đặt lều!
                     </div>
                   </>
                 ) : activeBooking ? (
@@ -1357,7 +1397,7 @@ export default function CampsiteMap({
                     <div className="text-[10px] text-slate-300 space-y-0.5 mt-1 border-t border-white/10 pt-1 font-medium">
                       {activeBooking.tentSetupSummary && (
                         <p className="text-amber-300 font-bold bg-amber-950/70 p-1 rounded-lg border border-amber-500/30 flex items-center gap-1 mb-1">
-                          <span>⛺ Setup:</span>
+                          <span>Setup:</span>
                           <span className="text-white">{activeBooking.tentSetupSummary}</span>
                         </p>
                       )}
@@ -1435,10 +1475,6 @@ export default function CampsiteMap({
             <span className="w-3.5 h-3.5 rounded-md border-2 border-rose-500 bg-rose-500/20 inline-block shadow-xs"></span>
             Đang có khách lưu trú
           </span>
-        </div>
-        <div className="text-slate-500 text-[11px] font-medium flex items-center gap-1.5">
-          <Sparkles size={14} className="text-amber-500" />
-          <span>* Rà chuột vào các ô đã đặt để xem thông tin đơn & phát sáng các ô thuộc cùng 1 lều</span>
         </div>
       </div>
 

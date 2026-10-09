@@ -283,7 +283,7 @@ export default function WaiterOrdersPage() {
   const getLocationFormatted = (order) => {
     const tent = order?.tent;
     const booking = order?.booking;
-    if (!tent) return { icon: "📍", text: "Vị Trí Chưa Xác Định", isTable: false, primaryTitle: "Chưa xác định", secondaryDetail: null, zoneTitle: "" };
+    if (!tent) return { isTable: false, primaryTitle: "Chưa xác định", secondaryDetail: null, zoneTitle: "" };
 
     const rawZone = tent.zoneName || tent.zone?.name || "";
     const rawTentName = tent.name || "";
@@ -305,7 +305,6 @@ export default function WaiterOrdersPage() {
       const tableNumber = rawTentName.replace(/^Bàn\s*/i, '');
       const tableTitle = `Bàn ${tableNumber || rawTentName}`;
       return {
-        icon: "🍽️",
         isTable: true,
         zoneTitle,
         primaryTitle: tableTitle,
@@ -327,7 +326,6 @@ export default function WaiterOrdersPage() {
     }
 
     return {
-      icon: "⛺",
       isTable: false,
       zoneTitle,
       primaryTitle: slotsDisplay,
@@ -405,7 +403,7 @@ export default function WaiterOrdersPage() {
           <div className="flex items-center justify-between px-1">
             <div>
               <h2 className="text-lg font-black text-slate-800 tracking-tight">Sơ Đồ Bàn Khu Ẩm Thực</h2>
-              <p className="text-xs text-slate-500 font-bold">1-Chạm Mở Bàn, Đóng Bàn & Ghép Bàn Realtime</p>
+              <p className="text-xs text-slate-500 font-bold">Mở bàn, đóng bàn và ghép bàn realtime</p>
             </div>
             <button
               onClick={fetchTents}
@@ -471,7 +469,7 @@ export default function WaiterOrdersPage() {
                         onClick={() => handleOpenTable(table.id, table.name)}
                         className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1 cursor-pointer"
                       >
-                        <Unlock size={14} /> Mở Bàn 1-Chạm
+                        <Unlock size={14} /> Mở Bàn
                       </button>
                     ) : (
                       <>
@@ -582,7 +580,7 @@ export default function WaiterOrdersPage() {
           <div className="flex justify-between items-end mb-2 px-2">
             <div>
               <h2 className="text-xl font-black text-slate-800">Cần Giao Gấp</h2>
-              <p className="text-xs text-slate-500 font-bold">Bếp đã làm xong</p>
+              <p className="text-xs text-slate-500 font-bold">Bếp đã hoàn thành</p>
             </div>
             <span className="bg-rose-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-sm shadow-rose-500/30">
               {filteredOrders.length} Đơn
@@ -603,7 +601,6 @@ export default function WaiterOrdersPage() {
                     {/* Location Badge */}
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xl">{loc.icon}</span>
                         <h3 className="text-xl font-black text-slate-900 tracking-tight">
                           {loc.zoneTitle} • {loc.primaryTitle}
                         </h3>
@@ -611,7 +608,6 @@ export default function WaiterOrdersPage() {
 
                       {loc.secondaryDetail && (
                         <div className="mt-1 flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-950 font-black text-xs w-max">
-                          <span>⛺</span>
                           <span>Setup: <strong className="text-[#7C5A38]">{loc.secondaryDetail}</strong></span>
                         </div>
                       )}

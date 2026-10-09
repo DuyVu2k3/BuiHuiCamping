@@ -297,7 +297,10 @@ namespace BuiHuiCamping.API.Controllers
             foreach(var tent in tents)
             {
                 booking.Tents.Add(tent);
-                tent.Status = "Booked"; 
+                if (tent.Status != "Occupied")
+                {
+                    tent.Status = "Booked";
+                }
             }
 
             // Calculate pricing dynamically based on configured physical tents if provided
@@ -1017,17 +1020,33 @@ namespace BuiHuiCamping.API.Controllers
 
             foreach (var tent in booking.Tents)
             {
-                tent.Status = "Available";
-                tent.IsQrUnlocked = false;
-                tent.MergedParentTentId = null;
+                // Safely recalculate status for this slot based on other active bookings
+                var remainingActive = await _context.Bookings
+                    .Where(b => b.Id != booking.Id && (b.Status == "Occupied" || b.Status == "Booked" || b.Status == "Pending") && b.Tents.Any(t => t.Id == tent.Id))
+                    .ToListAsync();
 
-                // Reset any child merged tables linked to this master table
-                var childTables = await _context.Tents.Where(t => t.MergedParentTentId == tent.Id).ToListAsync();
-                foreach (var child in childTables)
+                if (remainingActive.Any(b => b.Status == "Occupied"))
                 {
-                    child.MergedParentTentId = null;
-                    child.Status = "Available";
-                    child.IsQrUnlocked = false;
+                    tent.Status = "Occupied";
+                }
+                else if (remainingActive.Any(b => b.Status == "Booked" || b.Status == "Pending"))
+                {
+                    tent.Status = "Booked";
+                }
+                else
+                {
+                    tent.Status = "Available";
+                    tent.IsQrUnlocked = false;
+                    tent.MergedParentTentId = null;
+
+                    // Reset any child merged tables linked to this master table
+                    var childTables = await _context.Tents.Where(t => t.MergedParentTentId == tent.Id).ToListAsync();
+                    foreach (var child in childTables)
+                    {
+                        child.MergedParentTentId = null;
+                        child.Status = "Available";
+                        child.IsQrUnlocked = false;
+                    }
                 }
             }
 
@@ -1064,6 +1083,8 @@ namespace BuiHuiCamping.API.Controllers
 
             foreach(var tent in booking.Tents)
             {
+                tent.Status = "Occupied";
+
                 // Ensure Master Order exists
                 var existingOrder = booking.Orders.FirstOrDefault(o => o.TentId == tent.Id && o.Status == "Unpaid");
                 if (existingOrder == null)

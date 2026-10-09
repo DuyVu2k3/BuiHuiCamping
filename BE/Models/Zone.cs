@@ -12,6 +12,9 @@ namespace BuiHuiCamping.API.Models
         public int GridRows { get; set; } = 4;
         public int GridCols { get; set; } = 5;
 
+        // Chế độ Lễ hội / Xếp lều linh hoạt (Freestyle shared placement)
+        public bool IsFlexibleMode { get; set; } = false;
+
         // Navigation property
         public ICollection<Tent> Tents { get; set; } = new List<Tent>();
     }

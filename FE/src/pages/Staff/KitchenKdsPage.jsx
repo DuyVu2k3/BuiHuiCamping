@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChefHat, Flame, Clock, RefreshCw, Volume2, VolumeX, Maximize2, Layers, Grid, LogOut, CheckCircle2, AlertTriangle, BellRing, Tent, Utensils, MapPin, User, Phone } from 'lucide-react';
+import { ChefHat, Clock, RefreshCw, Volume2, VolumeX, Maximize2, LogOut, CheckCircle2, AlertTriangle, BellRing, Tent, Utensils, MapPin, User, Phone } from 'lucide-react';
 import { getApiUrl } from '../../apiConfig';
 import signalRService from '../../services/signalrService';
 import { useAuth } from '../../context/AuthContext';
@@ -209,8 +209,7 @@ export default function KitchenKdsPage() {
         secondaryDetail: null,
         badgeText: "BÀN ĂN",
         shortSummary: `${tableTitle} (${zoneTitle})`,
-        slotNumber: tableNumber,
-        icon: "🍽️"
+        slotNumber: tableNumber
       };
     }
 
@@ -233,8 +232,7 @@ export default function KitchenKdsPage() {
       primaryTitle: slotsDisplay, // e.g. "Ô 03"
       secondaryDetail: tentSetup || null, // e.g. "2 Lều Nhỏ (1-2 khách)"
       badgeText: "LỀU TRẠI",
-      shortSummary: `${slotsDisplay}${tentSetup ? ` • ${tentSetup}` : ''}`,
-      icon: "⛺"
+      shortSummary: `${slotsDisplay}${tentSetup ? ` • ${tentSetup}` : ''}`
     };
   };
 
@@ -321,7 +319,6 @@ export default function KitchenKdsPage() {
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
               <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300">Live Real-time</span>
             </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">Tự động phân biệt đơn Khách Bàn Ăn vs Khách Lều</p>
           </div>
         </div>
 
@@ -331,25 +328,23 @@ export default function KitchenKdsPage() {
           <div className="bg-[#FAF7F2] p-1 rounded-2xl border border-[#EBE3D5] flex items-center gap-1">
             <button
               onClick={() => setViewMode('orders')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
                 viewMode === 'orders'
                   ? 'bg-[#1B4D3E] text-white shadow-md'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
               }`}
             >
-              <Grid size={15} />
               Theo Đơn Hàng ({filteredOrders.length})
             </button>
 
             <button
               onClick={() => setViewMode('summary')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
                 viewMode === 'summary'
                   ? 'bg-[#1B4D3E] text-white shadow-md'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
               }`}
             >
-              <Layers size={15} />
               Gom Tổng Món ({aggregatedList.length})
             </button>
           </div>
@@ -482,7 +477,7 @@ export default function KitchenKdsPage() {
                                 ? 'bg-amber-100 text-amber-900 border-amber-300' 
                                 : 'bg-emerald-100 text-emerald-900 border-emerald-300'
                             }`}>
-                              {loc.icon} {loc.zoneTitle}
+                              {loc.zoneTitle}
                             </span>
                           </div>
 
@@ -504,7 +499,6 @@ export default function KitchenKdsPage() {
                           {/* Secondary Detail: Tent Setup (e.g. 2 Lều Nhỏ (1-2 khách)) */}
                           {loc.secondaryDetail && (
                             <div className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-950 text-xs font-black shadow-2xs">
-                              <span className="text-base leading-none">⛺</span>
                               <div className="leading-tight">
                                 <span className="text-[10px] text-[#7C5A38] block font-bold uppercase tracking-wider">Loại lều:</span>
                                 <span className="font-extrabold text-[#1B4D3E] text-xs">{loc.secondaryDetail}</span>
@@ -544,7 +538,7 @@ export default function KitchenKdsPage() {
                         {/* Customer Notes */}
                         {order.notes && (
                           <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-xs text-amber-900 italic font-medium">
-                            📝 Ghi chú: {order.notes}
+                            Ghi chú: {order.notes}
                           </div>
                         )}
                       </div>
@@ -589,11 +583,10 @@ export default function KitchenKdsPage() {
               <div className="space-y-6">
                 <div className="bg-white p-4 rounded-2xl border border-[#EBE3D5] flex justify-between items-center shadow-xs">
                   <div>
-                    <h3 className="text-lg font-black text-[#1B4D3E] flex items-center gap-2">
-                      <Flame className="text-amber-600" size={20} />
-                      Bảng Gom Tổng Số Lượng Món Cần Chế Biến
+                    <h3 className="text-lg font-black text-[#1B4D3E]">
+                      Bảng Gom Tổng Số Lượng Món
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">Tổng hợp từ toàn bộ {orders.length} đơn đang chờ để đầu bếp chế biến theo mẻ lớn</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Tổng hợp từ {orders.length} đơn đang chờ</p>
                   </div>
                   <div className="text-right">
                     <span className="text-2xl font-black text-[#1B4D3E]">{aggregatedList.length}</span>
@@ -610,7 +603,7 @@ export default function KitchenKdsPage() {
                       <div className="flex justify-between items-start">
                         <div>
                           <span className="text-[10px] font-extrabold uppercase text-[#7C5A38] tracking-wider block bg-[#F0E6D8] px-2.5 py-0.5 rounded-full border border-amber-200/60 w-max mb-1">
-                            {dish.category === 'Food' ? '🍖 Đồ Ăn' : dish.category === 'Drink' ? '🥤 Đồ Uống' : '✨ Dịch Vụ'}
+                            {dish.category === 'Food' ? 'Đồ Ăn' : dish.category === 'Drink' ? 'Đồ Uống' : 'Dịch Vụ'}
                           </span>
                           <h4 className="text-xl font-extrabold text-slate-800">{dish.name}</h4>
                         </div>
@@ -621,15 +614,14 @@ export default function KitchenKdsPage() {
 
                       {/* Location Breakdown */}
                       <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Phân bổ theo Vị Trí:</span>
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Phân bổ theo vị trí:</span>
                         <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
                           {dish.locations?.map((itemLoc, idx) => (
                             <div key={idx} className="flex justify-between items-center text-xs bg-[#FAF7F2] p-2.5 rounded-xl border border-slate-200/60 font-extrabold text-slate-800">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-[#1B4D3E] font-black">{itemLoc.loc.primaryTitle}</span>
                                 {itemLoc.loc.secondaryDetail && (
-                                  <span className="text-[10px] text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border border-amber-200/60">
-                                    <span>⛺</span>
+                                  <span className="text-[10px] text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md font-bold flex items-center border border-amber-200/60">
                                     <span>{itemLoc.loc.secondaryDetail}</span>
                                   </span>
                                 )}
